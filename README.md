@@ -311,7 +311,7 @@ Cada frame del video pasa por las siguientes etapas:
 | Nombre | GitHub |
 |---|---|
 | Facundo Majda | [@FacundoMajda](https://github.com/FacundoMajda) |
-| Ortega | — |
+| Marcelo Ortega | [@ortegamarcelodev](https://github.com/ortegamarcelodev) |
 
 ---
 
