@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎯 ML Person Detection & Stair Counter
+# 🎯 ML Person Detection
 
 ### Detección inteligente de personas en zonas definidas mediante Computer Vision
 
