@@ -1,2 +1,16 @@
 /venv
 __pycache__/
+.env
+*.pyc
+# Ignore the .vscode directory if you are using Visual Studio Code
+.vscode/
+# Ignore the .idea directory if you are using JetBrains IDEs
+.idea/
+# Ignore the .pytest_cache directory if you are using pytest
+.pytest_cache/
+# Ignore the .mypy_cache directory if you are using mypy
+.mypy_cache/
+# Ignore the .coverage file if you are using coverage.py
+*.pt
+outputs/
+reports/
