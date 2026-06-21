@@ -18,3 +18,10 @@ class EventType(str, Enum):
     EXIT = "exit"
     OVERCAPACITY = "overcapacity"
     DWELL_EXCEEDED = "dwell_exceeded"
+
+
+class TrackingClass(str, Enum):
+    PERSON = "person"
+    CAR = "car"
+    BICYCLE = "bicycle"
+    BACKPACK = "backpack"

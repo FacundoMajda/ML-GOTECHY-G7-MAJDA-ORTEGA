@@ -20,6 +20,11 @@ CREATE TABLE "roi" (
 	"polygon" jsonb NOT NULL,
 	"positive_label" text DEFAULT 'inside' NOT NULL,
 	"negative_label" text DEFAULT 'outside' NOT NULL,
+	"detect_entry" boolean DEFAULT true NOT NULL,
+	"detect_exit" boolean DEFAULT true NOT NULL,
+	"detect_occupancy" boolean DEFAULT true NOT NULL,
+	"detect_dwell" boolean DEFAULT false NOT NULL,
+	"alerts" jsonb DEFAULT '[]'::jsonb,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -99,3 +104,10 @@ ALTER TABLE "roi_occupancy_snapshot" ADD CONSTRAINT "roi_occupancy_snapshot_sess
 ALTER TABLE "tracked_entity" ADD CONSTRAINT "tracked_entity_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "detection_session"("id") ON DELETE CASCADE;
 ALTER TABLE "zone_event" ADD CONSTRAINT "zone_event_roi_id_fkey" FOREIGN KEY ("roi_id") REFERENCES "roi"("id");
 ALTER TABLE "zone_event" ADD CONSTRAINT "zone_event_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "detection_session"("id") ON DELETE CASCADE;
+
+-- Migrations for existing databases
+ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_entry BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_exit BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_occupancy BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_dwell BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE roi ADD COLUMN IF NOT EXISTS alerts JSONB DEFAULT '[]'::jsonb;

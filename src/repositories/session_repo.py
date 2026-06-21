@@ -103,7 +103,7 @@ class SessionRepository:
             ),
         )
 
-    def save_session_result(self, session: SessionResult) -> None:
+    def save_session_result(self, session: SessionResult) -> UUID:
         session_id = self.create_session(session)
         if session.tracked_entities:
             self.save_tracked_entities(session_id, session.tracked_entities)
@@ -111,3 +111,91 @@ class SessionRepository:
             self.save_occupancy_snapshot(session_id, snap)
         for ev in session.zone_events:
             self.save_zone_event(session_id, ev)
+        return session_id
+
+    def list_all(self) -> list[dict]:
+        rows = execute_query(
+            """
+            SELECT
+                ds.id,
+                vs.name AS source_name,
+                vs.source_type AS source_type,
+                ds.started_at,
+                ds.ended_at,
+                EXTRACT(EPOCH FROM (ds.ended_at - ds.started_at)) AS duration_seconds,
+                COALESCE(te.entity_count, 0) AS total_entities,
+                COALESCE(ze.event_count, 0) AS total_events
+            FROM detection_session ds
+            LEFT JOIN video_source vs ON ds.video_source_id = vs.id
+            LEFT JOIN (
+                SELECT session_id, COUNT(*) AS entity_count
+                FROM tracked_entity
+                GROUP BY session_id
+            ) te ON ds.id = te.session_id
+            LEFT JOIN (
+                SELECT session_id, COUNT(*) AS event_count
+                FROM zone_event
+                GROUP BY session_id
+            ) ze ON ds.id = ze.session_id
+            ORDER BY ds.started_at DESC
+            """,
+            fetch="all",
+        )
+        return [
+            {
+                "id": str(row[0]),
+                "source_name": row[1],
+                "source_type": row[2],
+                "started_at": row[3].isoformat() if row[3] else None,
+                "ended_at": row[4].isoformat() if row[4] else None,
+                "duration_seconds": float(row[5]) if row[5] is not None else None,
+                "total_entities": int(row[6]),
+                "total_events": int(row[7]),
+                "status": "running" if row[4] is None else "completed",
+            }
+            for row in rows
+        ]
+
+    def get_by_id(self, session_id: str) -> dict | None:
+        rows = execute_query(
+            """
+            SELECT
+                ds.id,
+                vs.name AS source_name,
+                vs.source_type AS source_type,
+                ds.started_at,
+                ds.ended_at,
+                EXTRACT(EPOCH FROM (ds.ended_at - ds.started_at)) AS duration_seconds,
+                COALESCE(te.entity_count, 0) AS total_entities,
+                COALESCE(ze.event_count, 0) AS total_events
+            FROM detection_session ds
+            LEFT JOIN video_source vs ON ds.video_source_id = vs.id
+            LEFT JOIN (
+                SELECT session_id, COUNT(*) AS entity_count
+                FROM tracked_entity
+                GROUP BY session_id
+            ) te ON ds.id = te.session_id
+            LEFT JOIN (
+                SELECT session_id, COUNT(*) AS event_count
+                FROM zone_event
+                GROUP BY session_id
+            ) ze ON ds.id = ze.session_id
+            WHERE ds.id = %s
+            ORDER BY ds.started_at DESC
+            """,
+            (session_id,),
+            fetch="all",
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            "id": str(row[0]),
+            "source_name": row[1],
+            "source_type": row[2],
+            "started_at": row[3].isoformat() if row[3] else None,
+            "ended_at": row[4].isoformat() if row[4] else None,
+            "duration_seconds": float(row[5]) if row[5] is not None else None,
+            "total_entities": int(row[6]),
+            "total_events": int(row[7]),
+        }

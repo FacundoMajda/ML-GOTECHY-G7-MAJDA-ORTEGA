@@ -1,6 +1,8 @@
 # src/controllers/app_handler.py
 import json
+import threading
 import uuid
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -8,8 +10,10 @@ from urllib.parse import parse_qs, urlparse
 import cv2
 import numpy as np
 
+from src.config.settings import REPORTS_DIR
 from src.models.contracts import ROIConfig, VideoSourceConfig
 from src.models.enums import SourceType
+from src.repositories.session_repo import SessionRepository
 from src.repositories.video_source_repo import VideoSourceRepository
 from src.services.analytics_service import AnalyticsService
 from src.services.report_service import generate_report_html
@@ -19,6 +23,109 @@ from src.utils.html_utils import render_home
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 _repo = VideoSourceRepository()
+_session_repo = SessionRepository()
+
+# ── Job progress (thread-safe) ─────────────────────────────────────────────
+_job_progress: dict = {}
+_job_lock: threading.Lock = threading.Lock()
+
+# ── Frame dimensions cache ─────────────────────────────────────────────────
+_frame_dim_cache: dict[str, tuple[int, int]] = {}
+_frame_dim_lock: threading.Lock = threading.Lock()
+
+# ── Tracking class name → YOLO class ID mapping ────────────────────────────
+_TRACKING_CLASS_TO_YOLO = {
+    "person": 0,
+    "bicycle": 1,
+    "car": 2,
+    "backpack": 24,
+}
+
+
+def _run_analysis(
+    video_source_id: str,
+    output_video: bool,
+    tracking_classes: list[int] | None,
+    frame_skip: int,
+    max_frames: int | None,
+) -> None:
+    """Run analysis in background thread, updating _job_progress."""
+    try:
+        config = _repo.get_by_id(video_source_id)
+        if config is None:
+            raise ValueError(f"Video source not found: {video_source_id}")
+        rois = _repo.get_rois_for_source(video_source_id)
+
+        service = AnalyticsService(config, rois, persist=True)
+
+        def _progress_callback(frames_done: int, total_frames: int) -> None:
+            with _job_lock:
+                _job_progress["frames_done"] = frames_done
+                _job_progress["total_frames"] = total_frames
+                if total_frames and total_frames > 0:
+                    _job_progress["progress"] = frames_done / total_frames
+                _job_progress["message"] = f"Processed {frames_done}/{total_frames} frames"
+
+        result = service.process(
+            write_video=output_video,
+            extra_analysis=None,
+            tracking_classes=tracking_classes,
+            frame_skip=frame_skip,
+            max_frames=max_frames,
+            progress_callback=_progress_callback,
+        )
+
+        # Save report HTML to disk
+        report_html = generate_report_html(result)
+        report_path = Path(REPORTS_DIR) / f"{result.id}.html"
+        report_path.write_text(report_html, encoding="utf-8")
+
+        with _job_lock:
+            _job_progress["running"] = False
+            _job_progress["session_id"] = result.id
+            _job_progress["error"] = None
+            _job_progress["timestamp"] = datetime.now().isoformat()
+            _job_progress["message"] = "Analysis complete"
+    except Exception as exc:
+        with _job_lock:
+            _job_progress["running"] = False
+            _job_progress["error"] = str(exc)
+            _job_progress["timestamp"] = datetime.now().isoformat()
+            _job_progress["message"] = "Analysis failed"
+
+
+def _get_frame_dimensions(source_id: str) -> tuple[int, int]:
+    """Lazy-cache frame dimensions for a video source."""
+    with _frame_dim_lock:
+        if source_id in _frame_dim_cache:
+            return _frame_dim_cache[source_id]
+
+    config = _repo.get_by_id(source_id)
+    if config is None:
+        return (0, 0)
+
+    try:
+        uri = config.source_uri
+        if config.source_type in (SourceType.YOUTUBE_VOD, SourceType.YOUTUBE_LIVE):
+            import yt_dlp
+            ydl_opts = {"quiet": True, "no_warnings": True, "format": "best[height<=480]"}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(uri, download=False)
+                uri = info.get("url") or uri
+
+        cap = cv2.VideoCapture(uri, cv2.CAP_FFMPEG)
+        if not cap.isOpened():
+            return (0, 0)
+        ok, frame = cap.read()
+        cap.release()
+        if not ok or frame is None:
+            return (0, 0)
+        h, w = frame.shape[:2]
+        with _frame_dim_lock:
+            _frame_dim_cache[source_id] = (w, h)
+        return (w, h)
+    except Exception:
+        return (0, 0)
 
 
 def _load_video_sources() -> list[tuple[VideoSourceConfig, list[ROIConfig]]]:
@@ -29,12 +136,15 @@ def _load_video_sources() -> list[tuple[VideoSourceConfig, list[ROIConfig]]]:
 
 
 def _source_to_dict(src: VideoSourceConfig, rois: list[ROIConfig]) -> dict:
+    fw, fh = _get_frame_dimensions(src.id)
     return {
         "id": src.id,
         "name": src.name,
         "source_type": src.source_type.value,
         "source_uri": src.source_uri,
         "is_live": src.is_live,
+        "frame_width": fw,
+        "frame_height": fh,
         "rois": [
             {
                 "id": r.id,
@@ -42,6 +152,11 @@ def _source_to_dict(src: VideoSourceConfig, rois: list[ROIConfig]) -> dict:
                 "polygon": r.polygon,
                 "positive_label": r.positive_label,
                 "negative_label": r.negative_label,
+                "detect_entry": r.detect_entry,
+                "detect_exit": r.detect_exit,
+                "detect_occupancy": r.detect_occupancy,
+                "detect_dwell": r.detect_dwell,
+                "alerts": r.alerts,
             }
             for r in rois
         ],
@@ -79,7 +194,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     info = ydl.extract_info(uri, download=False)
                     uri = info.get("url") or uri
 
-            cap = cv2.VideoCapture(uri)
+            cap = cv2.VideoCapture(uri, cv2.CAP_FFMPEG)
             if not cap.isOpened():
                 self._send_json(404, {"error": "Cannot open video source"})
                 return
@@ -192,26 +307,48 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        path = parsed.path
 
-        # API
-        if parsed.path == "/api/sources":
+        # API — sources
+        if path == "/api/sources":
             self._api_sources()
             return
 
-        if parsed.path.startswith("/api/sources/"):
-            parts = parsed.path.removeprefix("/api/sources/").split("/", 1)
+        if path.startswith("/api/sources/"):
+            parts = path.removeprefix("/api/sources/").split("/", 1)
             source_id = parts[0]
             if len(parts) == 2 and parts[1] == "preview":
                 self._api_source_preview(source_id)
                 return
+            self.send_error(404)
+            return
+
+        # API — sessions
+        if path == "/api/sessions":
+            self._api_session_list()
+            return
+
+        if path.startswith("/api/sessions/"):
+            parts = path.removeprefix("/api/sessions/").split("/", 1)
+            session_id = parts[0]
+            if len(parts) == 2 and parts[1] == "report":
+                self._api_session_report(session_id)
+                return
+            self.send_error(404)
+            return
+
+        # API — job status
+        if path == "/api/job/status":
+            self._api_job_status()
+            return
 
         # Pages
-        if parsed.path == "/":
+        if path == "/":
             self._send_html(render_home())
             return
 
-        if parsed.path.startswith("/files/"):
-            rel = parsed.path.removeprefix("/files/")
+        if path.startswith("/files/"):
+            rel = path.removeprefix("/files/")
             file_path = (BASE_DIR / rel).resolve()
             if not str(file_path).startswith(str(BASE_DIR)):
                 self.send_error(403)
@@ -229,41 +366,231 @@ class AppHandler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path.startswith("/api/rois/"):
+            roi_id = path.removeprefix("/api/rois/")
+            self._api_delete_roi(roi_id)
+            return
+
+        self.send_error(404)
+
+    def do_PUT(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path.startswith("/api/rois/") and path.endswith("/config"):
+            roi_id = path.removeprefix("/api/rois/").removesuffix("/config")
+            self._api_update_roi_config(roi_id)
+            return
+
+        self.send_error(404)
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path == "/api/sources":
+        path = parsed.path
+        if path == "/api/sources":
             self._handle_create_source()
-        elif parsed.path == "/process":
+        elif path == "/process":
             self._handle_process()
+        elif path.startswith("/api/sources/"):
+            parts = path.removeprefix("/api/sources/").split("/", 1)
+            if len(parts) == 2 and parts[1] == "rois":
+                self._api_create_roi(parts[0])
+                return
+            self.send_error(404)
         else:
             self.send_error(404)
 
     def _handle_process(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
-        payload = self.rfile.read(length).decode("utf-8")
-        form = parse_qs(payload)
-        video_source_id = form.get("video_source_id", [""])[0]
-        output_video = form.get("output_video", [""])[0] == "on"
+        raw = self.rfile.read(length)
+        content_type = self.headers.get("Content-Type", "")
 
-        try:
-            config = _repo.get_by_id(video_source_id)
-            if config is None:
-                raise ValueError(f"Video source not found: {video_source_id}")
-            rois = _repo.get_rois_for_source(video_source_id)
+        if "application/json" in content_type:
+            body = json.loads(raw) if raw else {}
+            video_source_id = body.get("video_source_id", "")
+            output = body.get("output", {})
+            output_video = output.get("annotated_video", True)
 
-            service = AnalyticsService(config, rois)
-            result = service.process(write_video=output_video, extra_analysis=None)
-            report_html = generate_report_html(result)
-            self._send_html(report_html)
-        except Exception as exc:
-            self._send_html(
-                f"<html><body style='font-family:sans-serif;padding:40px'>"
-                f"<h2 style='color:#dc2626'>Error</h2>"
-                f"<p>{exc}</p>"
-                f"<a href='/' style='color:var(--accent,#0f766e)'>Back to Dashboard</a>"
-                f"</body></html>",
-                status=500,
-            )
+            # New fields
+            tracking_classes_raw = body.get("tracking_classes")
+            if tracking_classes_raw and isinstance(tracking_classes_raw, list):
+                tracking_class_ids = [
+                    _TRACKING_CLASS_TO_YOLO.get(cls, 0) for cls in tracking_classes_raw
+                ]
+            else:
+                tracking_class_ids = None  # default: person only (backward compat)
+            frame_skip = body.get("frame_skip", 1)
+            try:
+                frame_skip = int(frame_skip)
+            except (ValueError, TypeError):
+                frame_skip = 1
+            if frame_skip < 1:
+                frame_skip = 1
+
+            max_frames = body.get("max_frames")
+            if max_frames is not None:
+                try:
+                    max_frames = int(max_frames)
+                except (ValueError, TypeError):
+                    max_frames = None
+        else:
+            # Backward compat: form-urlencoded (no new fields)
+            form = parse_qs(raw.decode("utf-8"))
+            video_source_id = form.get("video_source_id", [""])[0]
+            output_video = form.get("output_video", [""])[0] == "on"
+            tracking_class_ids = None
+            frame_skip = 1
+            max_frames = None
+
+        # Validate source exists before spawning thread
+        config = _repo.get_by_id(video_source_id)
+        if config is None:
+            self._send_json(404, {"error": f"Video source not found: {video_source_id}"})
+            return
+
+        # Set job progress and spawn background thread
+        with _job_lock:
+            _job_progress.clear()
+            _job_progress.update({
+                "running": True,
+                "progress": 0.0,
+                "frames_done": 0,
+                "total_frames": None,
+                "error": None,
+                "timestamp": datetime.now().isoformat(),
+                "message": "Starting analysis...",
+            })
+
+        thread = threading.Thread(
+            target=_run_analysis,
+            args=(video_source_id, output_video, tracking_class_ids, frame_skip, max_frames),
+            daemon=True,
+        )
+        thread.start()
+
+        self._send_json(200, {"status": "started"})
+
+    def _api_session_list(self) -> None:
+        """GET /api/sessions"""
+        sessions = _session_repo.list_all()
+        self._send_json(200, sessions)
+
+    def _api_session_report(self, session_id: str) -> None:
+        """GET /api/sessions/<id>/report"""
+        path = Path(REPORTS_DIR) / f"{session_id}.html"
+        if not path.exists():
+            self._send_json(404, {"error": "Report not found"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.end_headers()
+        self.wfile.write(path.read_bytes())
+
+    # ── New API endpoints ────────────────────────────────────────────────────
+
+    def _api_create_roi(self, source_id: str) -> None:
+        """POST /api/sources/<id>/rois"""
+        # Validate source exists
+        config = _repo.get_by_id(source_id)
+        if config is None:
+            self._send_json(404, {"error": "Source not found"})
+            return
+
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length)) if length else {}
+
+        name = body.get("name", "").strip()
+        polygon = body.get("polygon")
+
+        if not name:
+            self._send_json(400, {"error": "name is required"})
+            return
+
+        if not polygon or not isinstance(polygon, list) or len(polygon) < 3:
+            self._send_json(400, {"error": "polygon must have at least 3 points"})
+            return
+
+        for point in polygon:
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                self._send_json(400, {"error": "each polygon point must be [x, y]"})
+                return
+
+        roi_id = str(uuid.uuid4())
+        roi = ROIConfig(id=roi_id, name=name, polygon=polygon)
+        _repo.create_roi(roi, source_id)
+
+        self._send_json(201, {
+            "id": roi.id,
+            "name": roi.name,
+            "polygon": roi.polygon,
+            "positive_label": roi.positive_label,
+            "negative_label": roi.negative_label,
+            "detect_entry": roi.detect_entry,
+            "detect_exit": roi.detect_exit,
+            "detect_occupancy": roi.detect_occupancy,
+            "detect_dwell": roi.detect_dwell,
+            "alerts": roi.alerts,
+        })
+
+    def _api_delete_roi(self, roi_id: str) -> None:
+        """DELETE /api/rois/<id>"""
+        existing = _repo.get_roi_by_id(roi_id)
+        if existing is None:
+            self._send_json(404, {"error": "ROI not found"})
+            return
+
+        _repo.delete_roi(roi_id)
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _api_update_roi_config(self, roi_id: str) -> None:
+        """PUT /api/rois/<id>/config"""
+        existing = _repo.get_roi_by_id(roi_id)
+        if existing is None:
+            self._send_json(404, {"error": "ROI not found"})
+            return
+
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length)) if length else {}
+
+        _repo.update_roi_config(roi_id, body)
+
+        # Return updated fields
+        updated = _repo.get_roi_by_id(roi_id)
+        self._send_json(200, updated)
+
+    def _api_job_status(self) -> None:
+        """GET /api/job/status"""
+        with _job_lock:
+            status = dict(_job_progress)
+
+        if not status:
+            status = {
+                "running": False,
+                "progress": 0.0,
+                "frames_done": 0,
+                "total_frames": None,
+                "error": None,
+                "timestamp": datetime.now().isoformat(),
+                "message": "No job running",
+            }
+
+        # Ensure all expected keys are present
+        status.setdefault("running", False)
+        status.setdefault("progress", 0.0)
+        status.setdefault("frames_done", 0)
+        status.setdefault("total_frames", None)
+        status.setdefault("error", None)
+        status.setdefault("timestamp", datetime.now().isoformat())
+        status.setdefault("message", "")
+
+        self._send_json(200, status)
 
     def log_message(self, format: str, *args) -> None:
         return

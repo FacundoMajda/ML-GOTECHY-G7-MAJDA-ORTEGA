@@ -14,6 +14,11 @@ class ROIConfig:
     polygon: list[list[int]]  # [[x1,y1],[x2,y2],...]
     positive_label: str = "inside"
     negative_label: str = "outside"
+    detect_entry: bool = True
+    detect_exit: bool = True
+    detect_occupancy: bool = True
+    detect_dwell: bool = False
+    alerts: list = field(default_factory=list)  # list[dict] — JSONB from DB
 
 
 @dataclass
@@ -77,3 +82,28 @@ class SessionResult:
     tracked_entities: list[TrackedEntityRecord] = field(default_factory=list)
     occupancy_snapshots: list[OccupancySnapshot] = field(default_factory=list)
     zone_events: list[ZoneEventRecord] = field(default_factory=list)
+    id: Optional[str] = None
+
+
+@dataclass
+class ROIAlert:
+    alert_type: str  # Literal["overcapacity", "dwell_exceeded", "area_empty"]
+    threshold: int
+
+
+@dataclass
+class ROIAnalyticsConfig:
+    roi_id: str
+    detect_entry: bool = True
+    detect_exit: bool = True
+    detect_occupancy: bool = True
+    detect_dwell: bool = False
+    alerts: list[ROIAlert] = field(default_factory=list)
+
+
+@dataclass
+class SourceAnalyticsConfig:
+    tracking_classes: list[str] = field(default_factory=lambda: ["person"])
+    frame_skip: int = 1
+    max_frames: int | None = None
+    global_alerts: list = field(default_factory=list)

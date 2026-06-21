@@ -6,7 +6,6 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from ultralytics import YOLO
 
 from src.config.settings import OUTPUT_DIR, REPORTS_DIR, YOLO_MODEL_PATH
 from src.models.contracts import (
@@ -152,12 +151,14 @@ class CounterEngine:
 
 
 # ── Model cache (singleton lazy) ────────────────────────────────────────────
-_model_instance: YOLO | None = None
+_model_instance = None  # type: ignore
 
 
-def _get_model() -> YOLO:
+def _get_model():
     global _model_instance
     if _model_instance is None:
+        from ultralytics import YOLO  # import lazy: torch no se carga hasta aca
+
         path = Path(YOLO_MODEL_PATH)
         if not path.exists():
             raise FileNotFoundError(
@@ -185,6 +186,10 @@ class AnalyticsService:
         self,
         write_video: bool = True,
         extra_analysis: Optional[dict] = None,
+        tracking_classes: Optional[list[int]] = None,
+        frame_skip: int = 1,
+        max_frames: Optional[int] = None,
+        progress_callback: Optional[callable] = None,
     ) -> SessionResult:
         model = _get_model()
         engine = CounterEngine(self.roi_configs)
@@ -199,12 +204,18 @@ class AnalyticsService:
 
         started_at = datetime.now()
         frame_index = 0
+        processed_frames = 0
         timestamp_mode = TimestampMode.REALTIME if self.provider.is_live else TimestampMode.FRAME_BASED
 
         while True:
             frame = self.provider.next_frame()
             if frame is None:
                 break
+
+            # Frame skip: skip N-1 frames between processed frames
+            if frame_index % frame_skip != 0:
+                frame_index += 1
+                continue
 
             if write_video and writer is None:
                 h, w = frame.shape[:2]
@@ -217,11 +228,13 @@ class AnalyticsService:
                     (w, h),
                 )
 
+            # Use tracking_classes if provided, default to [0] (person only) for backward compat
+            track_classes = tracking_classes if tracking_classes is not None else [0]
             results = model.track(
                 frame,
                 persist=True,
                 verbose=False,
-                classes=[0],
+                classes=track_classes,
                 conf=0.3,
                 tracker="bytetrack.yaml",
             )
@@ -242,6 +255,16 @@ class AnalyticsService:
                 writer.write(frame)
 
             frame_index += 1
+            processed_frames += 1
+
+            # Max frames limit
+            if max_frames is not None and processed_frames >= max_frames:
+                break
+
+            # Progress callback
+            if progress_callback:
+                total = max_frames or (frame_index + 1)
+                progress_callback(processed_frames, total)
 
         if writer:
             writer.release()
@@ -266,6 +289,7 @@ class AnalyticsService:
         )
 
         if self.persist and self._session_repo:
-            self._session_repo.save_session_result(session_result)
+            session_id = self._session_repo.save_session_result(session_result)
+            session_result.id = str(session_id)
 
         return session_result
