@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      NEON_DB_URL: postgresql://neondb_owner:npg_JBb5dlq6Wsgf@ep-damp-mouse-acdmtvfy-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+      YOLO_MODEL_PATH: /app/src/inference/yolo11n.pt
+      OUTPUT_DIR: /app/outputs
+      REPORTS_DIR: /app/reports
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - app_outputs:/app/outputs
+      - app_reports:/app/reports
+      - app_uploads:/app/uploads
+    restart: unless-stopped
+
+  dozzle:
+    image: amir20/dozzle:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DOZZLE_HOSTNAME: video-analytics
+    restart: unless-stopped
+
+volumes:
+  app_outputs:
+  app_reports:
+  app_uploads:
