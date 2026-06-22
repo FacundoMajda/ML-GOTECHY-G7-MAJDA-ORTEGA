@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+.env
+.atl/
+outputs/
+reports/
+uploads/
+notebooks/
+sample_data/
+*.md
