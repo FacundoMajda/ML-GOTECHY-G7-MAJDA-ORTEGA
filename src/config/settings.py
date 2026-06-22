@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+print(f"[DEBUG] config.settings: loading .env file", flush=True)
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -15,3 +16,4 @@ YOLO_MODEL_PATH = str(
 
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "outputs")
 REPORTS_DIR = os.environ.get("REPORTS_DIR", "reports")
+UPLOADS_DIR = os.environ.get("UPLOADS_DIR", "uploads")

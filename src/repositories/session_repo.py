@@ -16,6 +16,7 @@ from src.repositories.db import execute_query
 
 class SessionRepository:
     def create_session(self, session: SessionResult) -> UUID:
+        print(f"[DEBUG] SessionRepository.create_session: ENTRY video_source_id={session.video_source_id}", flush=True)
         session_uuid = uuid.uuid4()
         execute_query(
             """
@@ -37,11 +38,13 @@ class SessionRepository:
                 json.dumps(session.extra_analysis) if session.extra_analysis else None,
             ),
         )
+        print(f"[DEBUG] SessionRepository.create_session: returning uuid={session_uuid}", flush=True)
         return session_uuid
 
     def save_tracked_entities(
         self, session_id: UUID, entities: list[TrackedEntityRecord]
     ) -> None:
+        print(f"[DEBUG] SessionRepository.save_tracked_entities: ENTRY session_id={session_id} n_entities={len(entities)}", flush=True)
         for e in entities:
             execute_query(
                 """
@@ -66,6 +69,7 @@ class SessionRepository:
     def save_occupancy_snapshot(
         self, session_id: UUID, snapshot: OccupancySnapshot
     ) -> None:
+        print(f"[DEBUG] SessionRepository.save_occupancy_snapshot: ENTRY session_id={session_id} roi_id={snapshot.roi_id}", flush=True)
         execute_query(
             """
             INSERT INTO roi_occupancy_snapshot
@@ -84,6 +88,7 @@ class SessionRepository:
         )
 
     def save_zone_event(self, session_id: UUID, event: ZoneEventRecord) -> None:
+        print(f"[DEBUG] SessionRepository.save_zone_event: ENTRY session_id={session_id} roi_id={event.roi_id} type={event.event_type.value}", flush=True)
         execute_query(
             """
             INSERT INTO zone_event
@@ -104,6 +109,7 @@ class SessionRepository:
         )
 
     def save_session_result(self, session: SessionResult) -> UUID:
+        print(f"[DEBUG] SessionRepository.save_session_result: ENTRY session.id={session.id}", flush=True)
         session_id = self.create_session(session)
         if session.tracked_entities:
             self.save_tracked_entities(session_id, session.tracked_entities)
@@ -111,9 +117,11 @@ class SessionRepository:
             self.save_occupancy_snapshot(session_id, snap)
         for ev in session.zone_events:
             self.save_zone_event(session_id, ev)
+        print(f"[DEBUG] SessionRepository.save_session_result: returning {session_id}", flush=True)
         return session_id
 
     def list_all(self) -> list[dict]:
+        print(f"[DEBUG] SessionRepository.list_all: ENTRY", flush=True)
         rows = execute_query(
             """
             SELECT
@@ -141,7 +149,7 @@ class SessionRepository:
             """,
             fetch="all",
         )
-        return [
+        result = [
             {
                 "id": str(row[0]),
                 "source_name": row[1],
@@ -155,8 +163,11 @@ class SessionRepository:
             }
             for row in rows
         ]
+        print(f"[DEBUG] SessionRepository.list_all: returning {len(result)} rows", flush=True)
+        return result
 
     def get_by_id(self, session_id: str) -> dict | None:
+        print(f"[DEBUG] SessionRepository.get_by_id: ENTRY session_id={session_id}", flush=True)
         rows = execute_query(
             """
             SELECT
@@ -187,9 +198,10 @@ class SessionRepository:
             fetch="all",
         )
         if not rows:
+            print(f"[DEBUG] SessionRepository.get_by_id: not found, returning None", flush=True)
             return None
         row = rows[0]
-        return {
+        result = {
             "id": str(row[0]),
             "source_name": row[1],
             "source_type": row[2],
@@ -199,3 +211,5 @@ class SessionRepository:
             "total_entities": int(row[6]),
             "total_events": int(row[7]),
         }
+        print(f"[DEBUG] SessionRepository.get_by_id: returning {result}", flush=True)
+        return result

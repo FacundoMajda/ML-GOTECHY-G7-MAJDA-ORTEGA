@@ -12,6 +12,7 @@ class RTSPProvider(FrameProvider):
     RETRY_DELAY = 2  # seconds
 
     def __init__(self, url: str):
+        print(f"[DEBUG] RTSPProvider.__init__: ENTRY url={url[:80]}...", flush=True)
         self._url = url
         self._cap: Optional[cv2.VideoCapture] = None
         self._fps: Optional[float] = None
@@ -19,13 +20,16 @@ class RTSPProvider(FrameProvider):
         self._connect()
 
     def _connect(self) -> None:
+        print(f"[DEBUG] RTSPProvider._connect: connecting...", flush=True)
         self._cap = cv2.VideoCapture(self._url)
         if not self._cap.isOpened():
             raise RuntimeError(f"No se pudo abrir RTSP: {self._url}")
         self._fps = self._cap.get(cv2.CAP_PROP_FPS)
         self._connected = True
+        print(f"[DEBUG] RTSPProvider._connect: connected, fps={self._fps}", flush=True)
 
     def _reconnect(self) -> bool:
+        print(f"[DEBUG] RTSPProvider._reconnect: trying to reconnect...", flush=True)
         import time
         for attempt in range(self.MAX_RETRIES):
             self._cap.release()
@@ -33,28 +37,38 @@ class RTSPProvider(FrameProvider):
             if self._cap.isOpened():
                 self._fps = self._cap.get(cv2.CAP_PROP_FPS)
                 self._connected = True
+                print(f"[DEBUG] RTSPProvider._reconnect: reconnected on attempt {attempt+1}", flush=True)
                 return True
             time.sleep(self.RETRY_DELAY * (attempt + 1))
+        print(f"[DEBUG] RTSPProvider._reconnect: failed after {self.MAX_RETRIES} attempts", flush=True)
         return False
 
     def next_frame(self) -> Optional[np.ndarray]:
         if self._cap is None:
+            print(f"[DEBUG] RTSPProvider.next_frame: _cap is None, returning None", flush=True)
             return None
 
         ret, frame = self._cap.read()
         if not ret:
+            print(f"[DEBUG] RTSPProvider.next_frame: read failed, trying reconnect", flush=True)
             if not self._reconnect():
+                print(f"[DEBUG] RTSPProvider.next_frame: reconnect failed, returning None", flush=True)
                 return None
             ret, frame = self._cap.read()
             if not ret:
+                print(f"[DEBUG] RTSPProvider.next_frame: post-reconnect read failed, returning None", flush=True)
                 return None
 
+        print(f"[DEBUG] RTSPProvider.next_frame: returned frame shape={frame.shape}", flush=True)
         return frame
 
     def get_fps(self) -> Optional[float]:
-        return self._fps if self._fps and self._fps > 0 else None
+        result = self._fps if self._fps and self._fps > 0 else None
+        print(f"[DEBUG] RTSPProvider.get_fps: returning {result}", flush=True)
+        return result
 
     def get_total_frames(self) -> Optional[int]:
+        print(f"[DEBUG] RTSPProvider.get_total_frames: returning None (live)", flush=True)
         return None  # RTSP streams have unknown duration
 
     @property
@@ -62,7 +76,9 @@ class RTSPProvider(FrameProvider):
         return True
 
     def release(self) -> None:
+        print(f"[DEBUG] RTSPProvider.release: ENTRY", flush=True)
         if self._cap:
             self._cap.release()
             self._cap = None
         self._connected = False
+        print(f"[DEBUG] RTSPProvider.release: released", flush=True)

@@ -1,12 +1,11 @@
-# src/services/report_service.py
-import base64
+import html
 from pathlib import Path
 
 from src.models.contracts import SessionResult
 
 
 def generate_report_html(summary: SessionResult) -> str:
-    events_rows = ""
+    print(f"[DEBUG] report_service.generate_report_html: ENTRY session_id={summary.id} video_source_id={summary.video_source_id} n_events={len(summary.zone_events)} n_entities={len(summary.tracked_entities)}", flush=True)
     if summary.zone_events:
         rows = []
         for ev in summary.zone_events[-50:]:
@@ -25,6 +24,48 @@ def generate_report_html(summary: SessionResult) -> str:
 
     entry_count = sum(1 for e in summary.zone_events if e.event_type.value == "entry")
     exit_count = sum(1 for e in summary.zone_events if e.event_type.value == "exit")
+    roi_ids = sorted({e.roi_id for e in summary.zone_events} | {s.roi_id for s in summary.occupancy_snapshots})
+
+    roi_rows = []
+    for roi_id in roi_ids:
+        roi_entry = sum(
+            1 for e in summary.zone_events if e.roi_id == roi_id and e.event_type.value == "entry"
+        )
+        roi_exit = sum(
+            1 for e in summary.zone_events if e.roi_id == roi_id and e.event_type.value == "exit"
+        )
+        roi_snapshots = [s for s in summary.occupancy_snapshots if s.roi_id == roi_id]
+        max_inside = max((s.count_inside for s in roi_snapshots), default=0)
+        last_inside = roi_snapshots[-1].count_inside if roi_snapshots else 0
+        roi_rows.append(
+            f"<tr><td>{html.escape(roi_id)}</td><td>{roi_entry}</td><td>{roi_exit}</td>"
+            f"<td>{max_inside}</td><td>{last_inside}</td></tr>"
+        )
+    roi_rows_html = "\n".join(roi_rows) if roi_rows else "<tr><td colspan='5'>Sin ROIs procesadas.</td></tr>"
+
+    output_video_html = ""
+    if summary.output_video_path:
+        output_path = Path(summary.output_video_path)
+        if output_path.exists():
+            try:
+                rel = output_path.resolve().relative_to(Path.cwd().resolve())
+                url = "/files/" + str(rel).replace("\\", "/")
+                output_video_html = f"""
+                <div class="panel">
+                  <h2>Video Anotado</h2>
+                  <video controls preload="metadata" style="width:100%;border-radius:16px;background:#111">
+                    <source src="{html.escape(url)}" type="video/mp4">
+                  </video>
+                  <p><strong>Ruta:</strong> <code>{html.escape(summary.output_video_path)}</code></p>
+                </div>
+                """
+            except Exception:
+                output_video_html = f"""
+                <div class="panel">
+                  <h2>Video Anotado</h2>
+                  <p><strong>Ruta:</strong> <code>{html.escape(summary.output_video_path)}</code></p>
+                </div>
+                """
 
     return f"""<!DOCTYPE html>
 <html lang="es">
@@ -87,6 +128,20 @@ def generate_report_html(summary: SessionResult) -> str:
         <div class="label">Eventos totales</div>
         <div class="value">{len(summary.zone_events)}</div>
       </div>
+    </div>
+
+    {output_video_html}
+
+    <div class="panel">
+      <h2>Resumen por ROI</h2>
+      <table>
+        <thead>
+          <tr><th>ROI</th><th>Entradas</th><th>Salidas</th><th>Max dentro</th><th>Ultimo snapshot</th></tr>
+        </thead>
+        <tbody>
+          {roi_rows_html}
+        </tbody>
+      </table>
     </div>
 
     <div class="panel">

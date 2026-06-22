@@ -8,6 +8,7 @@ def escape(text: str) -> str:
 
 
 def render_home() -> str:
+    print(f"[DEBUG] html_utils.render_home: ENTRY", flush=True)
     """Home page — SPA with tab navigation (Sources / Jobs),
     source card grid, detail drawer (Preview / Areas / Settings),
     canvas ROI drawing, per-area config, global settings,
@@ -135,6 +136,15 @@ def render_home() -> str:
     #save-source-btn { background: var(--accent); color: white; }
     #cancel-source-btn { background: #e5e7eb; color: var(--ink); }
     #add-source-error { color: #dc2626; margin-top: 8px; font-size: 0.85rem; }
+    .dropzone {
+      border: 2px dashed var(--line); border-radius: 12px; padding: 18px;
+      text-align: center; background: rgba(255,255,255,0.8); color: var(--muted);
+      cursor: pointer; transition: all 0.15s ease;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent); background: rgba(15,118,110,0.06); color: var(--accent);
+    }
+    .source-help { margin-top: 8px; font-size: 0.8rem; color: var(--muted); }
 
     /* ── Jobs Table ── */
     .jobs-table-wrap { overflow-x: auto; }
@@ -438,7 +448,13 @@ def render_home() -> str:
           <option value="youtube_live">LIVE</option>
           <option value="rtsp">RTSP</option>
         </select>
-        <input name="new_uri" placeholder="URI / path">
+        <input name="new_uri" placeholder="URI / path" id="new-uri-input">
+        <div class="full-row" id="file-upload-wrap">
+          <input type="file" id="new-file-input" accept="video/*" style="display:none">
+          <div id="file-dropzone" class="dropzone">Drop a video here or click to choose one</div>
+          <div id="file-selected-name" class="source-help"></div>
+        </div>
+        <div class="full-row source-help" id="source-type-help">For file sources, you can upload a local video.</div>
       </div>
       <div class="add-source-actions">
         <button id="save-source-btn">Save</button>
@@ -532,6 +548,7 @@ def render_home() -> str:
     modalError: null,
     pollingInterval: null,
   };
+  let pendingSourceFile = null;
 
   // ── ROI Colors ──
   const roiColors = [
@@ -642,6 +659,56 @@ def render_home() -> str:
     grid.querySelectorAll('.source-card').forEach(card => {
       card.onclick = () => selectSource(card.dataset.id);
     });
+  }
+
+  function resetAddSourceForm() {
+    document.querySelector('[name="new_name"]').value = '';
+    document.querySelector('[name="new_uri"]').value = '';
+    document.querySelector('[name="new_type"]').value = 'file';
+    const fileInput = document.getElementById('new-file-input');
+    const fileName = document.getElementById('file-selected-name');
+    if (fileInput) fileInput.value = '';
+    if (fileName) fileName.textContent = '';
+    pendingSourceFile = null;
+    updateAddSourceMode();
+  }
+
+  function updateAddSourceMode() {
+    const type = document.querySelector('[name="new_type"]').value;
+    const uriInput = document.getElementById('new-uri-input');
+    const uploadWrap = document.getElementById('file-upload-wrap');
+    const help = document.getElementById('source-type-help');
+
+    if (type === 'file') {
+      uriInput.placeholder = 'Uploaded file path will appear automatically';
+      uriInput.readOnly = true;
+      uploadWrap.style.display = 'block';
+      help.textContent = 'Choose or drag a local video file. The path is generated automatically.';
+    } else if (type === 'youtube_vod') {
+      uriInput.placeholder = 'https://www.youtube.com/watch?v=...';
+      uriInput.readOnly = false;
+      uploadWrap.style.display = 'none';
+      help.textContent = 'Paste a YouTube video URL.';
+    } else if (type === 'youtube_live') {
+      uriInput.placeholder = 'https://www.youtube.com/watch?v=... or live URL';
+      uriInput.readOnly = false;
+      uploadWrap.style.display = 'none';
+      help.textContent = 'Paste a YouTube Live URL.';
+    } else {
+      uriInput.placeholder = 'rtsp://user:pass@host:port/stream';
+      uriInput.readOnly = false;
+      uploadWrap.style.display = 'none';
+      help.textContent = 'Paste an RTSP URI.';
+    }
+  }
+
+  async function uploadSelectedFile(file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/uploads', { method: 'POST', body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    return data.path;
   }
 
   function renderJobsTab() {
@@ -1418,30 +1485,75 @@ def render_home() -> str:
     // Add Source form
     const addBtn = document.getElementById('add-source-btn');
     if (addBtn) addBtn.onclick = () => { document.getElementById('add-source-form').style.display = 'block'; };
+    document.querySelector('[name="new_type"]').onchange = updateAddSourceMode;
+    const fileInput = document.getElementById('new-file-input');
+    const dropzone = document.getElementById('file-dropzone');
+    const fileName = document.getElementById('file-selected-name');
+    dropzone.onclick = () => fileInput.click();
+    fileInput.onchange = () => {
+      const file = fileInput.files && fileInput.files[0];
+      pendingSourceFile = file || null;
+      fileName.textContent = file ? file.name : '';
+    };
+    ['dragenter', 'dragover'].forEach(evt => {
+      dropzone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      dropzone.addEventListener(evt, e => {
+        e.preventDefault();
+        if (evt === 'drop') {
+          const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (file) {
+            pendingSourceFile = file;
+            fileName.textContent = file.name;
+          }
+        }
+        dropzone.classList.remove('dragover');
+      });
+    });
     document.getElementById('cancel-source-btn').onclick = () => {
       document.getElementById('add-source-form').style.display = 'none';
       document.getElementById('add-source-error').textContent = '';
+      resetAddSourceForm();
     };
-    document.getElementById('save-source-btn').onclick = () => {
+    document.getElementById('save-source-btn').onclick = async () => {
       const name = document.querySelector('[name="new_name"]').value.trim();
       const type = document.querySelector('[name="new_type"]').value;
-      const uri = document.querySelector('[name="new_uri"]').value.trim();
+      let uri = document.querySelector('[name="new_uri"]').value.trim();
       const errDiv = document.getElementById('add-source-error');
-      fetchJSON('/api/sources', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name, source_type: type, source_uri: uri})
-      }).then(({status, data}) => {
+
+      try {
+        if (type === 'file') {
+          const file = pendingSourceFile || (fileInput.files && fileInput.files[0]);
+          if (!file) {
+            errDiv.textContent = 'Choose a video file first';
+            return;
+          }
+          errDiv.textContent = 'Uploading file...';
+          uri = await uploadSelectedFile(file);
+          document.querySelector('[name="new_uri"]').value = uri;
+        }
+
+        errDiv.textContent = type === 'file' ? 'Creating source...' : '';
+        const {status, data} = await fetchJSON('/api/sources', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name, source_type: type, source_uri: uri})
+        });
         if (status >= 400) {
           errDiv.textContent = data.error || 'Error creating source';
         } else {
-          document.querySelector('[name="new_name"]').value = '';
-          document.querySelector('[name="new_uri"]').value = '';
           document.getElementById('add-source-form').style.display = 'none';
           errDiv.textContent = '';
+          resetAddSourceForm();
           fetchSources();
         }
-      }).catch(() => { errDiv.textContent = 'Network error'; });
+      } catch (err) {
+        errDiv.textContent = err.message || 'Network error';
+      }
     };
 
     // Retry buttons
@@ -1462,6 +1574,7 @@ def render_home() -> str:
     });
 
     // Initial fetch
+    updateAddSourceMode();
     fetchSources();
   }
 

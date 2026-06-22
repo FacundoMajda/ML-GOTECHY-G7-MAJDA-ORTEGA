@@ -65,6 +65,7 @@ class CounterEngine:
         foot: tuple[float, float],
         timestamp: datetime,
     ) -> None:
+        print(f"[DEBUG] CounterEngine.update: ENTRY frame_index={frame_index} track_id={track_id} foot=({foot[0]:.1f},{foot[1]:.1f})", flush=True)
         self._frame_index = frame_index
         now = timestamp
 
@@ -78,6 +79,7 @@ class CounterEngine:
                 last_seen_frame=frame_index,
                 inside_rois={},
             )
+            print(f"[DEBUG] CounterEngine.update: new entity_state for track_id={track_id}", flush=True)
         else:
             state = self.entity_states[track_id]
             state.last_seen_at = now
@@ -88,7 +90,7 @@ class CounterEngine:
             inside = self.is_inside(roi_id, foot)
             prev = self.zone_state[roi_id].get(track_id)
 
-            if prev is False and inside:
+            if prev is False and inside and roi.detect_entry:
                 self.zone_counts[roi_id]["entry"] += 1
                 self.events.append(
                     ZoneEventRecord(
@@ -99,7 +101,8 @@ class CounterEngine:
                         frame_number=frame_index,
                     )
                 )
-            elif prev is True and not inside:
+                print(f"[DEBUG] CounterEngine.update: ENTRY event roi={roi_id} track={track_id}", flush=True)
+            elif prev is True and not inside and roi.detect_exit:
                 self.zone_counts[roi_id]["exit"] += 1
                 dwell = (now - self.entity_states[track_id].first_seen_at).total_seconds()
                 self.events.append(
@@ -112,6 +115,7 @@ class CounterEngine:
                         dwell_seconds=dwell,
                     )
                 )
+                print(f"[DEBUG] CounterEngine.update: EXIT event roi={roi_id} track={track_id} dwell={dwell:.1f}s", flush=True)
 
             self.zone_state[roi_id][track_id] = inside
             self.entity_states[track_id].inside_rois[roi_id] = inside
@@ -121,8 +125,11 @@ class CounterEngine:
             self._take_snapshot(timestamp)
 
     def _take_snapshot(self, timestamp: datetime) -> None:
+        print(f"[DEBUG] CounterEngine._take_snapshot: ENTRY frame={self._frame_index} ents={len(self.entity_states)}", flush=True)
         total_tracked = len(self.entity_states)
         for roi_id in self.roi_configs:
+            if not self.roi_configs[roi_id].detect_occupancy:
+                continue
             inside_ids = [
                 tid for tid, inside in self.zone_state[roi_id].items() if inside
             ]
@@ -136,9 +143,11 @@ class CounterEngine:
                     track_ids_inside=inside_ids,
                 )
             )
+        print(f"[DEBUG] CounterEngine._take_snapshot: added {len(self.roi_configs)} snapshots, total={len(self.snapshots)}", flush=True)
 
     def get_tracked_entities(self) -> list[TrackedEntityRecord]:
-        return [
+        print(f"[DEBUG] CounterEngine.get_tracked_entities: ENTRY n_entities={len(self.entity_states)}", flush=True)
+        result = [
             TrackedEntityRecord(
                 track_id=state.track_id,
                 first_seen_at=state.first_seen_at,
@@ -148,6 +157,8 @@ class CounterEngine:
             )
             for state in self.entity_states.values()
         ]
+        print(f"[DEBUG] CounterEngine.get_tracked_entities: returning {len(result)} records", flush=True)
+        return result
 
 
 # ── Model cache (singleton lazy) ────────────────────────────────────────────
@@ -157,6 +168,7 @@ _model_instance = None  # type: ignore
 def _get_model():
     global _model_instance
     if _model_instance is None:
+        print(f"[DEBUG] _get_model: loading model from {YOLO_MODEL_PATH}", flush=True)
         from ultralytics import YOLO  # import lazy: torch no se carga hasta aca
 
         path = Path(YOLO_MODEL_PATH)
@@ -166,7 +178,126 @@ def _get_model():
                 f"Asegurate de tener el .pt en src/inference/"
             )
         _model_instance = YOLO(path)
+        print(f"[DEBUG] _get_model: model loaded successfully", flush=True)
+    else:
+        print(f"[DEBUG] _get_model: returning cached model instance", flush=True)
     return _model_instance
+
+
+def _draw_multiline_panel(frame: np.ndarray, lines: list[str]) -> None:
+    if not lines:
+        return
+
+    panel_height = 18 + 26 * len(lines)
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (12, 12), (420, panel_height), (22, 28, 36), -1)
+    cv2.addWeighted(overlay, 0.45, frame, 0.55, 0, frame)
+
+    for idx, text in enumerate(lines):
+        y = 38 + (idx * 24)
+        cv2.putText(
+            frame,
+            text,
+            (24, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.62,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+
+def _annotate_frame(
+    frame: np.ndarray,
+    engine: CounterEngine,
+    roi_configs: list[ROIConfig],
+    boxes: np.ndarray | None,
+    ids: np.ndarray | None,
+) -> np.ndarray:
+    print(f"[DEBUG] _annotate_frame: ENTRY boxes={boxes is not None} ids={ids is not None} len_rois={len(roi_configs)}", flush=True)
+    annotated = frame.copy()
+
+    for roi in roi_configs:
+        pts = np.array(roi.polygon, dtype=np.int32)
+        overlay = annotated.copy()
+        cv2.fillPoly(overlay, [pts], (15, 118, 110))
+        cv2.addWeighted(overlay, 0.12, annotated, 0.88, 0, annotated)
+        cv2.polylines(annotated, [pts], isClosed=True, color=(15, 118, 110), thickness=2)
+
+        inside_now = sum(1 for inside in engine.zone_state[roi.id].values() if inside)
+        label = (
+            f"{roi.name} | in:{inside_now} "
+            f"ent:{engine.zone_counts[roi.id]['entry']} "
+            f"sal:{engine.zone_counts[roi.id]['exit']}"
+        )
+        anchor = pts[0]
+        text_pos = (int(anchor[0]), max(24, int(anchor[1]) - 8))
+        cv2.putText(
+            annotated,
+            label,
+            text_pos,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.52,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            annotated,
+            label,
+            text_pos,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.52,
+            (15, 118, 110),
+            1,
+            cv2.LINE_AA,
+        )
+
+    if boxes is not None and ids is not None:
+        for bbox, track_id in zip(boxes, ids):
+            x1, y1, x2, y2 = map(int, bbox)
+            state = engine.entity_states.get(int(track_id))
+            inside_rois = []
+            if state:
+                inside_rois = [
+                    roi.name
+                    for roi in roi_configs
+                    if state.inside_rois.get(roi.id, False)
+                ]
+
+            box_color = (22, 163, 74) if inside_rois else (59, 130, 246)
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), box_color, 2)
+            label = f"ID {int(track_id)}"
+            if inside_rois:
+                label += " | " + ",".join(inside_rois[:2])
+            cv2.putText(
+                annotated,
+                label,
+                (x1, max(20, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
+    total_inside = sum(
+        sum(1 for inside in engine.zone_state[roi.id].values() if inside)
+        for roi in roi_configs
+        if roi.detect_occupancy
+    )
+    lines = [
+        f"Tracks: {len(engine.entity_states)}",
+        f"Eventos: {len(engine.events)}",
+        f"Personas en ROI: {total_inside}",
+    ]
+    for roi in roi_configs[:4]:
+        lines.append(
+            f"{roi.name}: E {engine.zone_counts[roi.id]['entry']} | S {engine.zone_counts[roi.id]['exit']}"
+        )
+    _draw_multiline_panel(annotated, lines)
+
+    return annotated
 
 
 class AnalyticsService:
@@ -191,6 +322,7 @@ class AnalyticsService:
         max_frames: Optional[int] = None,
         progress_callback: Optional[callable] = None,
     ) -> SessionResult:
+        print(f"[DEBUG] AnalyticsService.process: ENTRY write_video={write_video} tracking_classes={tracking_classes} frame_skip={frame_skip} max_frames={max_frames} provider={type(self.provider).__name__}", flush=True)
         model = _get_model()
         engine = CounterEngine(self.roi_configs)
 
@@ -207,69 +339,90 @@ class AnalyticsService:
         processed_frames = 0
         timestamp_mode = TimestampMode.REALTIME if self.provider.is_live else TimestampMode.FRAME_BASED
 
-        while True:
-            frame = self.provider.next_frame()
-            if frame is None:
-                break
+        try:
+            while True:
+                frame = self.provider.next_frame()
+                if frame is None:
+                    print(f"[DEBUG] AnalyticsService.process: provider.next_frame() returned None, breaking loop", flush=True)
+                    break
 
-            # Frame skip: skip N-1 frames between processed frames
-            if frame_index % frame_skip != 0:
-                frame_index += 1
-                continue
+                # Frame skip: skip N-1 frames between processed frames
+                if frame_index % frame_skip != 0:
+                    frame_index += 1
+                    continue
 
-            if write_video and writer is None:
-                h, w = frame.shape[:2]
-                fps = self.provider.get_fps() or 30.0
-                out_path = OUTPUT_PATH / f"{self.config.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-                writer = cv2.VideoWriter(
-                    str(out_path),
-                    cv2.VideoWriter_fourcc(*"mp4v"),
-                    fps,
-                    (w, h),
+                if frame_index % 50 == 0:
+                    print(f"[DEBUG] AnalyticsService.process: frame_index={frame_index} processed_frames={processed_frames}", flush=True)
+
+                if write_video and writer is None:
+                    h, w = frame.shape[:2]
+                    fps = self.provider.get_fps() or 30.0
+                    out_path = OUTPUT_PATH / f"{self.config.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+                    print(f"[DEBUG] AnalyticsService.process: initializing VideoWriter -> {out_path} fps={fps} size=({w},{h})", flush=True)
+                    writer = cv2.VideoWriter(
+                        str(out_path),
+                        cv2.VideoWriter_fourcc(*"mp4v"),
+                        fps,
+                        (w, h),
+                    )
+
+                # Use tracking_classes if provided, default to [0] (person only) for backward compat
+                track_classes = tracking_classes if tracking_classes is not None else [0]
+                results = model.track(
+                    frame,
+                    persist=True,
+                    verbose=False,
+                    classes=track_classes,
+                    conf=0.3,
+                    tracker="bytetrack.yaml",
                 )
 
-            # Use tracking_classes if provided, default to [0] (person only) for backward compat
-            track_classes = tracking_classes if tracking_classes is not None else [0]
-            results = model.track(
-                frame,
-                persist=True,
-                verbose=False,
-                classes=track_classes,
-                conf=0.3,
-                tracker="bytetrack.yaml",
-            )
+                result = results[0]
+                boxes = None
+                ids = None
+                if result.boxes is not None and result.boxes.id is not None:
+                    boxes = result.boxes.xyxy.cpu().numpy()
+                    ids = result.boxes.id.cpu().numpy().astype(int)
+                    print(f"[DEBUG] AnalyticsService.process: YOLO tracking -> {len(boxes)} detections with ids", flush=True)
 
-            result = results[0]
-            if result.boxes is not None and result.boxes.id is not None:
-                boxes = result.boxes.xyxy.cpu().numpy()
-                ids = result.boxes.id.cpu().numpy().astype(int)
+                    for bbox, track_id in zip(boxes, ids):
+                        x1, y1, x2, y2 = bbox
+                        foot = ((x1 + x2) / 2.0, y2)
+                        center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+                        ts = datetime.now() if timestamp_mode == TimestampMode.REALTIME else started_at
+                        engine.update(frame_index, int(track_id), center, foot, ts)
+                    print(f"[DEBUG] AnalyticsService.process: after engine.update() total_events={len(engine.events)}", flush=True)
+                else:
+                    print(f"[DEBUG] AnalyticsService.process: YOLO returned no tracked objects (boxes={result.boxes is not None}, ids={result.boxes is not None and result.boxes.id is not None})", flush=True)
 
-                for bbox, track_id in zip(boxes, ids):
-                    x1, y1, x2, y2 = bbox
-                    foot = ((x1 + x2) / 2.0, y2)
-                    center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
-                    ts = datetime.now() if timestamp_mode == TimestampMode.REALTIME else started_at
-                    engine.update(frame_index, int(track_id), center, foot, ts)
+                if writer:
+                    writer.write(
+                        _annotate_frame(frame, engine, self.roi_configs, boxes, ids)
+                    )
 
+                frame_index += 1
+                processed_frames += 1
+
+                # Max frames limit
+                if max_frames is not None and processed_frames >= max_frames:
+                    print(f"[DEBUG] AnalyticsService.process: reached max_frames={max_frames}, breaking", flush=True)
+                    break
+
+                # Progress callback
+                if progress_callback:
+                    total = max_frames or (frame_index + 1)
+                    progress_callback(processed_frames, total)
+        finally:
+            print(f"[DEBUG] AnalyticsService.process: ENTERING finally block", flush=True)
             if writer:
-                writer.write(frame)
-
-            frame_index += 1
-            processed_frames += 1
-
-            # Max frames limit
-            if max_frames is not None and processed_frames >= max_frames:
-                break
-
-            # Progress callback
-            if progress_callback:
-                total = max_frames or (frame_index + 1)
-                progress_callback(processed_frames, total)
-
-        if writer:
-            writer.release()
+                print(f"[DEBUG] AnalyticsService.process: releasing writer", flush=True)
+                writer.release()
+            print(f"[DEBUG] AnalyticsService.process: releasing provider", flush=True)
+            self.provider.release()
+            print(f"[DEBUG] AnalyticsService.process: EXIT finally block", flush=True)
 
         ended_at = datetime.now()
+        print(f"[DEBUG] AnalyticsService.process: loop ended, frame_index={frame_index} processed_frames={processed_frames} events={len(engine.events)}", flush=True)
         # Final snapshot
         engine._take_snapshot(ended_at)
 
@@ -287,9 +440,12 @@ class AnalyticsService:
             occupancy_snapshots=engine.snapshots,
             zone_events=engine.events,
         )
+        print(f"[DEBUG] AnalyticsService.process: SessionResult created id={session_result.id}", flush=True)
 
         if self.persist and self._session_repo:
             session_id = self._session_repo.save_session_result(session_result)
             session_result.id = str(session_id)
+            print(f"[DEBUG] AnalyticsService.process: persisted session_id={session_id}", flush=True)
 
+        print(f"[DEBUG] AnalyticsService.process: returning SessionResult id={session_result.id}", flush=True)
         return session_result

@@ -1,12 +1,11 @@
 # src/providers/youtube_live.py
-import tempfile
 from typing import Optional
 
 import cv2
 import numpy as np
-import yt_dlp
 
 from src.providers.base import FrameProvider
+from src.providers.youtube_utils import extract_stream_url
 
 
 class YouTubeLiveProvider(FrameProvider):
@@ -14,6 +13,7 @@ class YouTubeLiveProvider(FrameProvider):
     RETRY_DELAY = 3  # seconds
 
     def __init__(self, url: str):
+        print(f"[DEBUG] YouTubeLiveProvider.__init__: ENTRY url={url[:80]}...", flush=True)
         self._url = url
         self._cap: Optional[cv2.VideoCapture] = None
         self._is_live = True
@@ -25,29 +25,27 @@ class YouTubeLiveProvider(FrameProvider):
         self._connect()
 
     def _get_stream_url(self) -> str:
-        ydl_opts = {
-            "format": "best[ext=mp4]/best",
-            "quiet": True,
-            "no_warnings": True,
-        }
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(self._url, download=False)
-                return info["url"]
+            return extract_stream_url(self._url)
         except Exception as e:
             raise RuntimeError(
                 f"No se pudo obtener el stream URL de {self._url}: {e}"
             )
 
     def _connect(self) -> None:
+        print(f"[DEBUG] YouTubeLiveProvider._connect: connecting...", flush=True)
         self._stream_url = self._get_stream_url()
+        print(f"[DEBUG] YouTubeLiveProvider._connect: got stream_url={self._stream_url[:80]}...", flush=True)
         self._cap = cv2.VideoCapture(self._stream_url)
         if not self._cap.isOpened():
             raise RuntimeError(f"No se pudo abrir stream live: {self._url}")
         self._fps = self._cap.get(cv2.CAP_PROP_FPS)
         self._connected = True
+        print(f"[DEBUG] YouTubeLiveProvider._connect: connected, fps={self._fps}", flush=True)
 
     def _reconnect(self) -> bool:
+        print(f"[DEBUG] YouTubeLiveProvider._reconnect: trying to reconnect...", flush=True)
+        import time
         for attempt in range(self.MAX_RETRIES):
             try:
                 self._cap.release()
@@ -55,32 +53,41 @@ class YouTubeLiveProvider(FrameProvider):
                 self._cap = cv2.VideoCapture(self._stream_url)
                 if self._cap.isOpened():
                     self._connected = True
+                    print(f"[DEBUG] YouTubeLiveProvider._reconnect: reconnected on attempt {attempt+1}", flush=True)
                     return True
             except Exception:
-                import time
                 time.sleep(self.RETRY_DELAY * (attempt + 1))
+        print(f"[DEBUG] YouTubeLiveProvider._reconnect: failed after {self.MAX_RETRIES} attempts", flush=True)
         return False
 
     def next_frame(self) -> Optional[np.ndarray]:
         if self._cap is None:
+            print(f"[DEBUG] YouTubeLiveProvider.next_frame: _cap is None, returning None", flush=True)
             return None
 
         ret, frame = self._cap.read()
         if not ret:
             self._connected = False
+            print(f"[DEBUG] YouTubeLiveProvider.next_frame: read failed, trying reconnect", flush=True)
             if not self._reconnect():
+                print(f"[DEBUG] YouTubeLiveProvider.next_frame: reconnect failed, returning None", flush=True)
                 return None
             ret, frame = self._cap.read()
             if not ret:
+                print(f"[DEBUG] YouTubeLiveProvider.next_frame: post-reconnect read failed, returning None", flush=True)
                 return None
 
         self._frame_count += 1
+        print(f"[DEBUG] YouTubeLiveProvider.next_frame: frame_count={self._frame_count} shape={frame.shape}", flush=True)
         return frame
 
     def get_fps(self) -> Optional[float]:
-        return self._fps if self._fps > 0 else None
+        result = self._fps if self._fps > 0 else None
+        print(f"[DEBUG] YouTubeLiveProvider.get_fps: returning {result}", flush=True)
+        return result
 
     def get_total_frames(self) -> Optional[int]:
+        print(f"[DEBUG] YouTubeLiveProvider.get_total_frames: returning None (live)", flush=True)
         return None  # Live stream, unknown duration
 
     @property
@@ -88,7 +95,9 @@ class YouTubeLiveProvider(FrameProvider):
         return True
 
     def release(self) -> None:
+        print(f"[DEBUG] YouTubeLiveProvider.release: ENTRY", flush=True)
         if self._cap:
             self._cap.release()
             self._cap = None
         self._connected = False
+        print(f"[DEBUG] YouTubeLiveProvider.release: released", flush=True)

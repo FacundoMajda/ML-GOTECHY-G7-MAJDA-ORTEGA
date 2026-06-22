@@ -11,16 +11,19 @@ from src.providers.youtube_video import YouTubeVideoProvider
 class VideoSourceFactory:
     @staticmethod
     def create(config: VideoSourceConfig) -> FrameProvider:
+        print(f"[DEBUG] VideoSourceFactory.create: ENTRY type={config.source_type.value} uri={str(config.source_uri)[:80]}...", flush=True)
         match config.source_type:
             case SourceType.FILE:
-                return LocalFileProvider(config.source_uri)
+                provider = LocalFileProvider(config.source_uri)
             case SourceType.YOUTUBE_VOD:
-                return YouTubeVideoProvider(config.source_uri)
+                provider = YouTubeVideoProvider(config.source_uri)
             case SourceType.YOUTUBE_LIVE:
-                return YouTubeLiveProvider(config.source_uri)
+                provider = YouTubeLiveProvider(config.source_uri)
             case SourceType.RTSP:
-                return RTSPProvider(config.source_uri)
+                provider = RTSPProvider(config.source_uri)
             case _:
                 raise NotImplementedError(
                     f"Source type {config.source_type} no implementado"
                 )
+        print(f"[DEBUG] VideoSourceFactory.create: returning {type(provider).__name__}", flush=True)
+        return provider
