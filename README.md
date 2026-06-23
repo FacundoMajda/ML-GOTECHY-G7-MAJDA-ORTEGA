@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎯 ML Person Detection & Stair Counter
+# 🎯 ML Person Detection
 
 ### Detección inteligente de personas en zonas definidas mediante Computer Vision
 
@@ -311,7 +311,7 @@ Cada frame del video pasa por las siguientes etapas:
 | Nombre | GitHub |
 |---|---|
 | Facundo Majda | [@FacundoMajda](https://github.com/FacundoMajda) |
-| Ortega | — |
+| Marcelo Ortega | [@ortegamarcelodev](https://github.com/ortegamarcelodev) |
 
 ---
 
