@@ -1,7 +1,6 @@
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
-from src.repositories.db import get_db_pool
+from src.repositories.db import execute_query
 
 
 class MetricSnapshotRepository:
@@ -20,59 +19,50 @@ class MetricSnapshotRepository:
         max_occupancy: int,
         avg_dwell_seconds: Optional[float] = None,
     ) -> uuid.UUID:
-        pool = get_db_pool()
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO metric_snapshot
-                        (session_id, roi_id, entries, exits, max_occupancy, avg_dwell_seconds)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (session_id, roi_id, entries, exits, max_occupancy, avg_dwell_seconds),
-                )
-                row = cur.fetchone()
-                conn.commit()
-                return row[0]
+        rows = execute_query(
+            """
+            INSERT INTO metric_snapshot
+                (session_id, roi_id, entries, exits, max_occupancy, avg_dwell_seconds)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (str(session_id), str(roi_id), entries, exits, max_occupancy, avg_dwell_seconds),
+            fetch="one",
+        )
+        return rows[0] if rows else None
 
     def get_by_session(self, session_id: uuid.UUID) -> list:
-        pool = get_db_pool()
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT id, session_id, roi_id, entries, exits,
-                           max_occupancy, avg_dwell_seconds, computed_at
-                    FROM metric_snapshot
-                    WHERE session_id = %s
-                    ORDER BY computed_at
-                    """,
-                    (session_id,),
-                )
-                rows = cur.fetchall()
-                return [
-                    {
-                        "id": r[0],
-                        "session_id": r[1],
-                        "roi_id": r[2],
-                        "entries": r[3],
-                        "exits": r[4],
-                        "max_occupancy": r[5],
-                        "avg_dwell_seconds": r[6],
-                        "computed_at": r[7],
-                    }
-                    for r in rows
-                ]
+        rows = execute_query(
+            """
+            SELECT id, session_id, roi_id, entries, exits,
+                   max_occupancy, avg_dwell_seconds, computed_at
+            FROM metric_snapshot
+            WHERE session_id = %s
+            ORDER BY computed_at
+            """,
+            (str(session_id),),
+            fetch="all",
+        )
+        if not rows:
+            return []
+        return [
+            {
+                "id": r[0],
+                "session_id": r[1],
+                "roi_id": r[2],
+                "entries": r[3],
+                "exits": r[4],
+                "max_occupancy": r[5],
+                "avg_dwell_seconds": float(r[6]) if r[6] is not None else None,
+                "computed_at": r[7],
+            }
+            for r in rows
+        ]
 
     def delete_by_session(self, session_id: uuid.UUID) -> int:
-        pool = get_db_pool()
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM metric_snapshot WHERE session_id = %s RETURNING id",
-                    (session_id,),
-                )
-                count = cur.rowcount
-                conn.commit()
-                return count
+        rows = execute_query(
+            "DELETE FROM metric_snapshot WHERE session_id = %s RETURNING id",
+            (str(session_id),),
+            fetch="all",
+        )
+        return len(rows) if rows else 0

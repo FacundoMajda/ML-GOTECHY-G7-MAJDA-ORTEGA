@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 from src.repositories.metric_snapshot_repo import MetricSnapshotRepository
 from src.repositories.zone_event_repo import ZoneEventRepository
-from src.repositories.db import get_db_pool
+from src.repositories.db import execute_query
 
 
 class MetricsService:
@@ -72,54 +72,52 @@ class MetricsService:
 
     def get_dashboard(self) -> dict:
         """Aggregate totals across all sessions."""
-        pool = get_db_pool()
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT
-                        COALESCE(SUM(entries), 0)   AS total_entries,
-                        COALESCE(SUM(exits), 0)     AS total_exits,
-                        COALESCE(SUM(max_occupancy), 0) AS sum_peak,
-                        COUNT(DISTINCT session_id)  AS session_count
-                    FROM metric_snapshot
-                    """
-                )
-                row = cur.fetchone()
-                return {
-                    "total_entries": row[0] or 0,
-                    "total_exits": row[1] or 0,
-                    "sum_peak": row[2] or 0,
-                    "session_count": row[3] or 0,
-                }
+        row = execute_query(
+            """
+            SELECT
+                COALESCE(SUM(entries), 0)   AS total_entries,
+                COALESCE(SUM(exits), 0)     AS total_exits,
+                COALESCE(SUM(max_occupancy), 0) AS sum_peak,
+                COUNT(DISTINCT session_id)  AS session_count
+            FROM metric_snapshot
+            """,
+            fetch="one",
+        )
+        if not row:
+            return {"total_entries": 0, "total_exits": 0, "sum_peak": 0, "session_count": 0}
+        return {
+            "total_entries": row[0] or 0,
+            "total_exits": row[1] or 0,
+            "sum_peak": row[2] or 0,
+            "session_count": row[3] or 0,
+        }
 
     def get_trend(self, roi_id: uuid.UUID) -> list:
         """Time series of entries/exits per session for a ROI."""
-        pool = get_db_pool()
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT ms.session_id, ms.entries, ms.exits, ms.max_occupancy,
-                           ds.started_at
-                    FROM metric_snapshot ms
-                    JOIN detection_session ds ON ds.id = ms.session_id
-                    WHERE ms.roi_id = %s
-                    ORDER BY ds.started_at
-                    """,
-                    (str(roi_id),),
-                )
-                rows = cur.fetchall()
-                return [
-                    {
-                        "session_id": r[0],
-                        "entries": r[1],
-                        "exits": r[2],
-                        "max_occupancy": r[3],
-                        "started_at": r[4],
-                    }
-                    for r in rows
-                ]
+        rows = execute_query(
+            """
+            SELECT ms.session_id, ms.entries, ms.exits, ms.max_occupancy,
+                   ds.started_at
+            FROM metric_snapshot ms
+            JOIN detection_session ds ON ds.id = ms.session_id
+            WHERE ms.roi_id = %s
+            ORDER BY ds.started_at
+            """,
+            (str(roi_id),),
+            fetch="all",
+        )
+        if not rows:
+            return []
+        return [
+            {
+                "session_id": r[0],
+                "entries": r[1],
+                "exits": r[2],
+                "max_occupancy": r[3],
+                "started_at": r[4],
+            }
+            for r in rows
+        ]
 
     def compare(self, session_a: uuid.UUID, session_b: uuid.UUID) -> dict:
         """Compare metrics between two sessions."""

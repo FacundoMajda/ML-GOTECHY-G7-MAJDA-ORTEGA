@@ -106,7 +106,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 .bento-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
 </style>
 </head>
-<body class="bg-background text-on-background">
+<body class="bg-background text-on-background" onload="switchTab('dashboard')">
 
 <!-- TopAppBar -->
 <header class="bg-background border-b border-outline-variant fixed top-0 left-0 right-0 h-16 flex justify-between items-center px-margin-desktop z-50">
@@ -213,11 +213,14 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 
 <div id="tab-dashboard" class="tab-content hidden">
 <div class="max-w-container-max mx-auto">
-<section class="mb-8">
+<section class="mb-8 flex justify-between items-end">
 <div>
 <h1 class="text-headline-lg font-headline-lg text-on-background">Dashboard</h1>
 <p class="text-body-md font-body-md text-outline">Resumen de metricas de analisis.</p>
 </div>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded font-bold hover:bg-primary-container transition-all" onclick="fetchDashboard()">
+<span class="material-symbols-outlined" style="font-size:18px">refresh</span> Actualizar
+</button>
 </section>
 <div id="dash-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 <div class="col-span-2 lg:col-span-4 text-center py-8 text-on-surface-variant"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm">Cargando...</p></div>
@@ -257,11 +260,14 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 
 <div id="tab-historial" class="tab-content hidden">
 <div class="max-w-container-max mx-auto">
-<section class="mb-8">
+<section class="mb-8 flex justify-between items-end">
 <div>
 <h1 class="text-headline-lg font-headline-lg text-on-background">Historial de Analisis</h1>
 <p class="text-body-md font-body-md text-outline">Resultados de todos los analisis ejecutados.</p>
 </div>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded font-bold hover:bg-primary-container transition-all" onclick="fetchAnalyses()">
+<span class="material-symbols-outlined" style="font-size:18px">refresh</span> Actualizar
+</button>
 </section>
 <div id="analyses-error" class="hidden bg-error-container border border-error rounded-lg p-4 mb-4 flex items-center gap-3">
 <span class="material-symbols-outlined text-error" data-icon="error">error</span>
