@@ -106,7 +106,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 .bento-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
 </style>
 </head>
-<body class="bg-background text-on-background" onload="switchTab('dashboard')">
+<body class="bg-background text-on-background" onload="switchTab('fuentes')">
 
 <!-- TopAppBar -->
 <header class="bg-background border-b border-outline-variant fixed top-0 left-0 right-0 h-16 flex justify-between items-center px-margin-desktop z-50">
@@ -114,13 +114,10 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <h1 class="text-headline-md font-headline-md font-bold text-primary cursor-pointer" onclick="switchTab('dashboard')">Argus Vision</h1>
 <nav class="hidden md:flex gap-4">
 <a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('fuentes')">Fuentes</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('dashboard')">Dashboard</a>
 <a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('historial')">Historial</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('logs')">Logs</a>
 </nav>
-</div>
-<div class="flex items-center gap-4">
-<span class="material-symbols-outlined text-on-surface-variant p-2 cursor-pointer hover:bg-surface-container-high rounded-full transition-all" data-icon="notifications">notifications</span>
-<div class="h-8 w-8 rounded-full overflow-hidden border border-outline-variant bg-surface-container-high flex items-center justify-center cursor-pointer">
-<span class="material-symbols-outlined text-on-surface-variant" data-icon="account_circle">account_circle</span>
 </div>
 </div>
 </header>
@@ -132,17 +129,21 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <p class="text-body-sm font-body-sm text-on-surface-variant">V3.4.2-Stable</p>
 </div>
 <nav class="flex-1 py-4 overflow-y-auto">
-<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link active" data-tab="dashboard" onclick="switchTab('dashboard')">
-<span class="material-symbols-outlined" data-icon="videocam">videocam</span>
-<span class="text-label-caps font-label-caps">DASHBOARD</span>
-</a>
-<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="fuentes" onclick="switchTab('fuentes')">
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link active" data-tab="fuentes" onclick="switchTab('fuentes')">
 <span class="material-symbols-outlined" data-icon="monitoring">monitoring</span>
 <span class="text-label-caps font-label-caps">FUENTES</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="dashboard" onclick="switchTab('dashboard')">
+<span class="material-symbols-outlined" data-icon="videocam">videocam</span>
+<span class="text-label-caps font-label-caps">DASHBOARD</span>
 </a>
 <a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="historial" onclick="switchTab('historial')">
 <span class="material-symbols-outlined" data-icon="description">description</span>
 <span class="text-label-caps font-label-caps">HISTORIAL</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="logs" onclick="switchTab('logs')">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+<span class="text-label-caps font-label-caps">LOGS</span>
 </a>
 </nav>
 <div class="p-4 bg-surface-container-lowest border-t border-outline-variant mt-auto">
@@ -151,11 +152,8 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <span class="text-body-md font-body-md">Add New Source</span>
 </button>
 <div class="mt-4 flex flex-col gap-2">
-<a class="text-on-surface-variant hover:text-primary text-body-sm font-body-sm flex items-center gap-2 cursor-pointer" href="#">
+<a class="text-on-surface-variant hover:text-primary text-body-sm font-body-sm flex items-center gap-2 cursor-pointer" onclick="switchTab('documentacion')">
 <span class="material-symbols-outlined" data-icon="help">help</span> Documentation
-</a>
-<a class="text-on-surface-variant hover:text-primary text-body-sm font-body-sm flex items-center gap-2 cursor-pointer" href="#">
-<span class="material-symbols-outlined" data-icon="contact_support">contact_support</span> Support
 </a>
 </div>
 </div>
@@ -216,42 +214,54 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <section class="mb-8 flex justify-between items-end">
 <div>
 <h1 class="text-headline-lg font-headline-lg text-on-background">Dashboard</h1>
-<p class="text-body-md font-body-md text-outline">Resumen de metricas de analisis.</p>
+<p class="text-body-md font-body-md text-outline">Resumen completo de metricas de analisis.</p>
 </div>
 <button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded font-bold hover:bg-primary-container transition-all" onclick="fetchDashboard()">
 <span class="material-symbols-outlined" style="font-size:18px">refresh</span> Actualizar
 </button>
 </section>
-<div id="dash-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-<div class="col-span-2 lg:col-span-4 text-center py-8 text-on-surface-variant"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm">Cargando...</p></div>
+
+<div id="dash-cards" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+<div class="col-span-2 lg:col-span-5 text-center py-8 text-on-surface-variant"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm">Cargando...</p></div>
 </div>
-<div class="bento-grid mb-10">
-<div class="col-span-12 lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-<div class="flex justify-between items-start mb-6">
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
+<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Actividad por Fuente</h4>
+<div id="dash-source-chart" class="space-y-3">
+<p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
+<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Top Areas (ROIs)</h4>
+<div id="dash-roi-chart" class="space-y-3">
+<p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
+</div>
+</div>
+</div>
+
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-8">
+<div class="flex items-center justify-between mb-4">
+<h4 class="text-label-caps font-label-caps text-secondary uppercase">Ultimos Analisis</h4>
+<button class="flex items-center gap-1 text-primary text-label-caps font-bold hover:underline" onclick="switchTab('historial')">
+<span class="material-symbols-outlined" style="font-size:16px">arrow_forward</span> Ver todos
+</button>
+</div>
+<div id="dash-recent-sessions"></div>
+</div>
+
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-8">
+<div class="flex justify-between items-start mb-4">
 <div>
-<h4 class="text-label-caps font-label-caps text-secondary uppercase">Tendencias de Ocupacion</h4>
-<p class="text-body-sm font-body-sm text-outline">Densidad agregada por fuente.</p>
+<h4 class="text-label-caps font-label-caps text-secondary uppercase">Distribucion por Hora (7 dias)</h4>
+<p class="text-body-sm font-body-sm text-outline">Entradas y salidas agregadas por hora.</p>
 </div>
 </div>
-<div class="h-48 w-full flex items-end gap-1 px-2 relative" id="occupancy-chart">
-<div class="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
-<div class="border-t border-outline h-px w-full"></div>
-<div class="border-t border-outline h-px w-full"></div>
-<div class="border-t border-outline h-px w-full"></div>
-</div>
-<div id="occupancy-bars" class="w-full h-full flex items-end gap-1"></div>
-</div>
-<div class="flex justify-between mt-4 px-2 text-label-caps font-label-caps text-outline uppercase">
-<span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>Ahora</span>
+<div class="h-40 w-full" id="dash-hourly-chart">
+<p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
 </div>
 </div>
-<div class="col-span-12 lg:col-span-4 bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-6">Tiempo Promedio por Zona</h4>
-<div id="dwell-times-content" class="space-y-6">
-<div class="text-center py-8"><p class="text-body-sm font-body-sm text-on-surface-variant">Sin datos anah</p></div>
-</div>
-</div>
-</div>
+
 </div>
 </div>
 
@@ -263,7 +273,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <section class="mb-8 flex justify-between items-end">
 <div>
 <h1 class="text-headline-lg font-headline-lg text-on-background">Historial de Analisis</h1>
-<p class="text-body-md font-body-md text-outline">Resultados de todos los analisis ejecutados.</p>
+<p class="text-body-md font-body-md text-outline">Todos los analisis ejecutados en el sistema.</p>
 </div>
 <button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded font-bold hover:bg-primary-container transition-all" onclick="fetchAnalyses()">
 <span class="material-symbols-outlined" style="font-size:18px">refresh</span> Actualizar
@@ -282,15 +292,175 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 
 <div id="tab-analysis-detail" class="tab-content hidden">
 <div class="max-w-container-max mx-auto">
-<section class="mb-6 flex items-center gap-4">
+<section class="mb-6 flex items-center justify-between">
+<div class="flex items-center gap-4">
 <button class="flex items-center gap-2 text-primary hover:underline text-body-sm font-body-sm" onclick="switchTab('historial')">
-<span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> Volver al historial
+<span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> Volver
 </button>
+</div>
 </section>
 <div id="analysis-detail-content"></div>
 </div>
 </div>
 
+
+<div id="tab-logs" class="tab-content hidden">
+<div class="max-w-container-max mx-auto">
+<section class="mb-8 flex justify-between items-end">
+<div>
+<h1 class="text-headline-lg font-headline-lg text-on-background">Logs del Sistema</h1>
+<p class="text-body-md font-body-md text-outline">Recursos del servidor y eventos de problema del sistema.</p>
+</div>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded font-bold hover:bg-primary-container transition-all" onclick="fetchLogs()">
+<span class="material-symbols-outlined" style="font-size:18px">refresh</span> Actualizar
+</button>
+</section>
+<div id="logs-content">
+<div class="text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Cargando...</p></div>
+</div>
+</div>
+</div>
+
+<div id="tab-documentacion" class="tab-content hidden">
+<div class="max-w-container-max mx-auto">
+<section class="mb-8">
+<h1 class="text-headline-lg font-headline-lg text-on-background">Documentacion</h1>
+<p class="text-body-md font-body-md text-outline">Tecnologias y arquitectura del sistema de analisis de video.</p>
+</section>
+
+<div class="space-y-4">
+
+<!-- ── StateManager ── -->
+<details class="group bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden" open>
+<summary class="flex items-center justify-between px-6 py-5 cursor-pointer hover:bg-surface-container/50 transition-colors [&::-webkit-details-marker]:hidden">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" style="font-size:28px">account_tree</span>
+<div>
+<h3 class="text-headline-md font-headline-md font-bold text-on-surface">CounterEngine — State Manager</h3>
+<p class="text-body-sm font-body-sm text-on-surface-variant">Motor de estado central: seguimiento de entidades, deteccion de entrada/salida por ROI y snapshots de ocupacion.</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="px-6 pb-6 border-t border-outline-variant pt-4">
+<div class="prose max-w-none text-body-md font-body-md text-on-surface-variant space-y-3">
+<p><strong class="text-on-surface">CounterEngine</strong> es el corazon del sistema. Mantiene el estado de cada entidad rastreada a lo largo del video y determina cuando cruzan las Regiones de Interes (ROI).</p>
+<ul class="list-disc pl-5 space-y-2">
+<li><strong class="text-on-surface">Estado por entidad:</strong> Por cada <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">track_id</code> unico guarda: frame/tiempo de primera y ultima aparicion, ROIs donde esta dentro, y momento de ingreso a cada ROI (para calcular dwell time).</li>
+<li><strong class="text-on-surface">Deteccion ENTRY/EXIT:</strong> Usa <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">cv2.pointPolygonTest</code> para verificar si el centro del pie de la persona esta dentro del poligono del ROI. Si el centro esta fuera, usa interseccion geometrica de segmentos (los dos pies vs. las aristas del poligono) para detectar cruces fronterizos.</li>
+<li><strong class="text-on-surface">Snapshots de ocupacion:</strong> Cada 30 frames registra cuantas entidades estan dentro/fuera de cada ROI, con sus <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">track_id</code>s.</li>
+<li><strong class="text-on-surface">Dwell Time:</strong> Cuando una entidad sale de un ROI, calcula automaticamente el tiempo transcurrido desde que ingreso.</li>
+<li><strong class="text-on-surface">Datos exportados:</strong> Al finalizar el analisis exporta entidades rastreadas, snapshots y eventos para persistencia en PostgreSQL.</li>
+</ul>
+</div>
+</div>
+</details>
+
+<!-- ── YOLO ── -->
+<details class="group bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
+<summary class="flex items-center justify-between px-6 py-5 cursor-pointer hover:bg-surface-container/50 transition-colors [&::-webkit-details-marker]:hidden">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" style="font-size:28px">radar</span>
+<div>
+<h3 class="text-headline-md font-headline-md font-bold text-on-surface">YOLO (Ultralytics)</h3>
+<p class="text-body-sm font-body-sm text-on-surface-variant">Deteccion de objetos en tiempo real mediante deep learning.</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="px-6 pb-6 border-t border-outline-variant pt-4">
+<div class="prose max-w-none text-body-md font-body-md text-on-surface-variant space-y-3">
+<p>Usamos <strong class="text-on-surface">Ultralytics YOLO11n</strong> (YOLO v11 nano) para deteccion de objetos. Es cargado como singleton perezoso — la primera vez que se ejecuta un analisis.</p>
+<ul class="list-disc pl-5 space-y-2">
+<li><strong class="text-on-surface">Modelo:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">yolo11n.pt</code> — variante nano, optimizada para velocidad.</li>
+<li><strong class="text-on-surface">Clase por defecto:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">0</code> (persona). Configurable desde la UI.</li>
+<li><strong class="text-on-surface">Confianza minima:</strong> 0.3 para filtrar detecciones debiles.</li>
+<li><strong class="text-on-surface">Integracion con ByteTrack:</strong> Se llama <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">model.track(frame, persist=True, tracker="bytetrack.yaml")</code> que ejecuta deteccion y tracking en un solo paso.</li>
+<li><strong class="text-on-surface">Backend:</strong> PyTorch en CPU (configurado con <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">pytorch-cpu</code>).</li>
+</ul>
+</div>
+</div>
+</details>
+
+<!-- ── ByteTrack ── -->
+<details class="group bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
+<summary class="flex items-center justify-between px-6 py-5 cursor-pointer hover:bg-surface-container/50 transition-colors [&::-webkit-details-marker]:hidden">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" style="font-size:28px">swap_driving_apps_wheel</span>
+<div>
+<h3 class="text-headline-md font-headline-md font-bold text-on-surface">ByteTrack</h3>
+<p class="text-body-sm font-body-sm text-on-surface-variant">Algoritmo de tracking multi-objeto por asociacion de detecciones.</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="px-6 pb-6 border-t border-outline-variant pt-4">
+<div class="prose max-w-none text-body-md font-body-md text-on-surface-variant space-y-3">
+<p><strong class="text-on-surface">ByteTrack</strong> es el tracker multi-objeto que asigna identificadores unicos (<code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">track_id</code>) a cada persona detectada a traves de los frames del video.</p>
+<ul class="list-disc pl-5 space-y-2">
+<li><strong class="text-on-surface">Asociacion:</strong> Usa matching de IoU (Intersection over Union) entre detecciones consecutivas para mantener la identidad de cada objeto.</li>
+<li><strong class="text-on-surface">Manejo de oclusiones:</strong> Utiliza detecciones de alta y baja confianza para mantener el tracking incluso cuando hay oclusiones parciales.</li>
+<li><strong class="text-on-surface">Configuracion:</strong> Viene integrado en Ultralytics via <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">bytetrack.yaml</code> — no requiere configuracion adicional.</li>
+<li><strong class="text-on-surface">Persistencia:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">persist=True</code> permite que el tracker mantenga identidades entre frames sucesivos.</li>
+</ul>
+</div>
+</div>
+</details>
+
+<!-- ── OpenCV ── -->
+<details class="group bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
+<summary class="flex items-center justify-between px-6 py-5 cursor-pointer hover:bg-surface-container/50 transition-colors [&::-webkit-details-marker]:hidden">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" style="font-size:28px">view_in_ar</span>
+<div>
+<h3 class="text-headline-md font-headline-md font-bold text-on-surface">OpenCV</h3>
+<p class="text-body-sm font-body-sm text-on-surface-variant">Vision por computadora: captura de video, anotacion de frames y analisis geometrico.</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="px-6 pb-6 border-t border-outline-variant pt-4">
+<div class="prose max-w-none text-body-md font-body-md text-on-surface-variant space-y-3">
+<p><strong class="text-on-surface">OpenCV</strong> (<code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">cv2</code>) es la columna vertebral de todas las operaciones de video. Sus usos principales:</p>
+<ul class="list-disc pl-5 space-y-2">
+<li><strong class="text-on-surface">Captura de video:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">VideoCapture</code> con backend FFmpeg para archivos locales, RTSP y streams de YouTube.</li>
+<li><strong class="text-on-surface">Escritura de video:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">VideoWriter</code> que produce MP4 anotado con bounding boxes y metricas. Post-procesado con FFmpeg a H.264 para compatibilidad web.</li>
+<li><strong class="text-on-surface">Geometria de ROI:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">pointPolygonTest</code> para determinar si un punto esta dentro de un poligono.</li>
+<li><strong class="text-on-surface">Anotacion visual:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">rectangle</code>, <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">putText</code>, <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">fillPoly</code>, <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">polylines</code>, <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">addWeighted</code> para overlays semi-transparentes.</li>
+<li><strong class="text-on-surface">Previsualizacion:</strong> <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">imencode</code> + <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">resize</code> para servir previews JPEG de las fuentes de video.</li>
+</ul>
+</div>
+</div>
+</details>
+
+<!-- ── Psutil ── -->
+<details class="group bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
+<summary class="flex items-center justify-between px-6 py-5 cursor-pointer hover:bg-surface-container/50 transition-colors [&::-webkit-details-marker]:hidden">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" style="font-size:28px">monitoring</span>
+<div>
+<h3 class="text-headline-md font-headline-md font-bold text-on-surface">Psutil</h3>
+<p class="text-body-sm font-body-sm text-on-surface-variant">Monitoreo de recursos del sistema en tiempo real.</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<div class="px-6 pb-6 border-t border-outline-variant pt-4">
+<div class="prose max-w-none text-body-md font-body-md text-on-surface-variant space-y-3">
+<p><strong class="text-on-surface">Psutil</strong> (<code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">psutil</code>) se utiliza en la pestana de Logs para mostrar metricas de rendimiento del servidor:</p>
+<ul class="list-disc pl-5 space-y-2">
+<li><strong class="text-on-surface">CPU:</strong> Porcentaje de uso del proceso via <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">psutil.Process.cpu_percent()</code>.</li>
+<li><strong class="text-on-surface">Memoria:</strong> RSS en MB y porcentaje del total del sistema via <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">memory_info().rss</code> y <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">memory_percent()</code>.</li>
+<li><strong class="text-on-surface">Disco:</strong> Tamano del directorio del proyecto (excluyendo <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">.venv</code> y <code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">__pycache__</code>).</li>
+<li><strong class="text-on-surface">Actividad:</strong> Tiempo de actividad del proceso, numero de hilos (<code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">num_threads()</code>), archivos abiertos (<code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">num_fds()</code>) y conexiones (<code class="text-primary bg-surface-container-high px-1.5 py-0.5 rounded text-data-mono">connections()</code>).</li>
+</ul>
+</div>
+</div>
+</details>
+
+</div>
+</div>
+</div>
 
 </main>
 
@@ -374,7 +544,12 @@ const roiColors = [
 
 function esc(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-function fetchJSON(url, opts) { return fetch(url, opts).then(r => r.json().then(d => ({status: r.status, data: d}))); }
+function fetchJSON(url, opts) {
+  return fetch(url, opts).then(r => {
+    if (r.status === 204) return { status: r.status, data: null };
+    return r.json().then(d => ({status: r.status, data: d}));
+  });
+}
 
 function getSource(id) { return state.sources.find(s => s.id === id); }
 
@@ -390,7 +565,7 @@ function formatDuration(sec) {
 function sourceTypeLabel(t) { const labels = {file:'FILE', youtube_vod:'YOUTUBE', youtube_live:'LIVE', rtsp:'RTSP'}; return labels[t] || t; }
 
 function getSourceSettings(sourceId) {
-  if (!state.sourceSettings[sourceId]) state.sourceSettings[sourceId] = { tracking_classes: ['person'], frame_skip: 1, max_frames: null };
+  if (!state.sourceSettings[sourceId]) state.sourceSettings[sourceId] = { tracking_classes: ['person'], max_seconds: null };
   return state.sourceSettings[sourceId];
 }
 
@@ -404,8 +579,9 @@ function switchTab(tab) {
     else { a.classList.remove('text-primary', 'font-bold', 'border-r-4', 'border-primary', 'bg-surface-container-high'); a.classList.add('text-on-surface-variant'); }
   });
   if (tab === 'fuentes') fetchSources();
-  if (tab === 'dashboard') { fetchDashboard(); fetchOccupancyTrends(); fetchDwellTimes(); }
+  if (tab === 'dashboard') fetchDashboard();
   if (tab === 'historial') fetchAnalyses();
+  if (tab === 'logs') { fetchLogs(); }
 }
 
 function toggleAddSourceForm() {
@@ -477,7 +653,10 @@ function renderSources() {
   }
   grid.innerHTML = state.sources.map(s => {
     const activeRois = (s.rois || []).length;
-    return `<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 card-hover cursor-pointer" onclick="selectSource('${esc(s.id)}')">
+    return `<div class="relative group bg-surface-container-lowest border border-outline-variant rounded-lg p-4 card-hover cursor-pointer" onclick="selectSource('${esc(s.id)}')">
+      <button onclick="event.stopPropagation(); deleteSource('${esc(s.id)}', '${esc(s.name)}')" class="absolute top-2 right-2 p-1 rounded-full hover:bg-error-container text-on-surface-variant hover:text-error transition-all opacity-0 group-hover:opacity-100" title="Eliminar fuente">
+        <span class="material-symbols-outlined" style="font-size:18px">delete</span>
+      </button>
       <div class="flex items-center gap-4 mb-3">
         <div class="w-20 h-14 rounded-lg bg-surface-container flex-shrink-0 overflow-hidden">
           <img class="w-full h-full object-cover" src="/api/sources/${esc(s.id)}/preview" alt="${esc(s.name)}" loading="lazy" onerror="this.style.display='none'"/>
@@ -682,7 +861,12 @@ function renderAreasTab() {
   container.innerHTML = src.rois.map(roi => {
     const eid = esc(roi.id);
     return `<details class="border border-outline-variant rounded-lg mb-2 overflow-hidden bg-surface-container-low">
-      <summary class="px-4 py-3 cursor-pointer font-bold text-body-md font-body-md hover:bg-surface-container transition-colors">${esc(roi.name)}</summary>
+      <summary class="flex items-center justify-between px-4 py-3 cursor-pointer font-bold text-body-md font-body-md hover:bg-surface-container transition-colors">
+        <span>${esc(roi.name)}</span>
+        <button onclick="event.stopPropagation(); deleteROI('${eid}', '${esc(roi.name)}')" class="p-1 rounded-full hover:bg-error-container text-on-surface-variant hover:text-error transition-all" title="Eliminar area">
+          <span class="material-symbols-outlined" style="font-size:16px">delete</span>
+        </button>
+      </summary>
       <div class="px-4 py-3 border-t border-outline-variant">
         <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_entry" ${roi.detect_entry ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Entry Detection</label>
         <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_exit" ${roi.detect_exit ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Exit Detection</label>
@@ -695,7 +879,9 @@ function renderAreasTab() {
 }
 
 async function saveROIConfig(roiId) {
-  const details = document.querySelector(`details:has(.area-chk[data-field="detect_entry"])`);
+  const msgEl = document.getElementById('config-msg-' + roiId);
+  if (!msgEl) return;
+  const details = msgEl.closest('details');
   if (!details) return;
   const config = {
     detect_entry: details.querySelector('.area-chk[data-field="detect_entry"]').checked,
@@ -703,12 +889,44 @@ async function saveROIConfig(roiId) {
     detect_occupancy: details.querySelector('.area-chk[data-field="detect_occupancy"]').checked,
     detect_dwell: details.querySelector('.area-chk[data-field="detect_dwell"]').checked,
   };
-  const msgEl = document.getElementById('config-msg-' + roiId);
-  if (msgEl) msgEl.textContent = 'Saving...';
+  msgEl.textContent = 'Saving...';
   try {
     const res = await fetchJSON('/api/rois/' + roiId + '/config', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-    if (msgEl) { msgEl.textContent = res.status === 200 ? 'Saved!' : 'Error'; msgEl.style.color = res.status === 200 ? '#005d54' : '#ba1a1a'; setTimeout(() => msgEl.textContent = '', 2000); }
-  } catch (e) { if (msgEl) { msgEl.textContent = 'Network error'; msgEl.style.color = '#ba1a1a'; } }
+    msgEl.textContent = res.status === 200 ? 'Saved!' : 'Error';
+    msgEl.style.color = res.status === 200 ? '#005d54' : '#ba1a1a';
+    setTimeout(() => msgEl.textContent = '', 2000);
+  } catch (e) { msgEl.textContent = 'Network error'; msgEl.style.color = '#ba1a1a'; }
+}
+
+// DELETE SOURCE / ROI
+
+async function deleteSource(id, name) {
+  if (!confirm('Eliminar la fuente "' + name + '"? Esta accion no se puede deshacer.')) return;
+  try {
+    const res = await fetch('/api/sources/' + id, { method: 'DELETE' });
+    if (res.status >= 400) {
+      const data = await res.json().catch(() => ({}));
+      alert('Error al eliminar: ' + (data.error || 'Error'));
+      return;
+    }
+    if (state.selectedSourceId === id) closeDrawer();
+    fetchSources();
+  } catch (e) { alert('Error de red: ' + e.message); }
+}
+
+async function deleteROI(id, name) {
+  if (!confirm('Eliminar el area "' + name + '"? Esta accion no se puede deshacer.')) return;
+  try {
+    const res = await fetch('/api/rois/' + id, { method: 'DELETE' });
+    if (res.status >= 400) {
+      const data = await res.json().catch(() => ({}));
+      alert('Error al eliminar: ' + (data.error || 'Error'));
+      return;
+    }
+    await fetchSources();
+    renderDrawer();
+    renderAreasTab();
+  } catch (e) { alert('Error de red: ' + e.message); }
 }
 
 // SETTINGS TAB
@@ -726,17 +944,11 @@ function renderSettingsTab() {
         </label>`).join('')}
     </div>
     <div class="mb-6">
-      <h3 class="text-label-caps font-label-caps text-on-surface-variant mb-3">FRAME SKIP</h3>
-      <select class="w-full border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background" onchange="updateSourceSetting('${esc(src.id)}','frame_skip',parseInt(this.value))">
-        ${[1,2,4,8].map(v => '<option value="'+v+'" '+(settings.frame_skip===v?'selected':'')+'>Every '+v+' frame'+(v>1?'s':'')+'</option>').join('')}
-      </select>
-    </div>
-    <div class="mb-6">
-      <h3 class="text-label-caps font-label-caps text-on-surface-variant mb-3">MAX FRAMES</h3>
+      <h3 class="text-label-caps font-label-caps text-on-surface-variant mb-3">SEGUNDOS A ANALIZAR</h3>
       <div class="flex items-center gap-3">
-        <input type="number" id="settings-maxframes" class="flex-1 border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background" min="100" step="100" value="${settings.max_frames||1000}" ${settings.max_frames===null?'disabled':''} onchange="updateSourceSetting('${esc(src.id)}','max_frames',this.value?parseInt(this.value):null)">
+        <input type="number" id="settings-maxseconds" class="flex-1 border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background" min="10" step="10" value="${settings.max_seconds||60}" ${settings.max_seconds===null?'disabled':''} onchange="updateSourceSetting('${esc(src.id)}','max_seconds',this.value?parseInt(this.value):null)">
         <label class="flex items-center gap-2 text-body-sm font-body-sm cursor-pointer whitespace-nowrap">
-          <input type="checkbox" ${settings.max_frames===null?'checked':''} onchange="toggleUnlimited('${esc(src.id)}')"> Unlimited
+          <input type="checkbox" ${settings.max_seconds===null?'checked':''} onchange="toggleFullVideo('${esc(src.id)}')"> Video Completo
         </label>
       </div>
     </div>`;
@@ -747,11 +959,11 @@ function onTrackingClassChange(sourceId) {
   settings.tracking_classes = Array.from(document.querySelectorAll('.settings-chk:checked')).map(cb => cb.dataset.class);
 }
 function updateSourceSetting(sourceId, key, value) { const settings = getSourceSettings(sourceId); settings[key] = value; }
-function toggleUnlimited(sourceId) {
-  const input = document.getElementById('settings-maxframes');
+function toggleFullVideo(sourceId) {
+  const input = document.getElementById('settings-maxseconds');
   const checkbox = input.parentElement.querySelector('input[type="checkbox"]');
-  if (checkbox.checked) { input.disabled = true; input.value = ''; updateSourceSetting(sourceId, 'max_frames', null); }
-  else { input.disabled = false; input.value = input.value || '1000'; updateSourceSetting(sourceId, 'max_frames', parseInt(input.value)); }
+  if (checkbox.checked) { input.disabled = true; input.value = ''; updateSourceSetting(sourceId, 'max_seconds', null); }
+  else { input.disabled = false; input.value = input.value || '60'; updateSourceSetting(sourceId, 'max_seconds', parseInt(input.value)); }
 }
 
 // ANALYSIS FLOW
@@ -784,8 +996,7 @@ function renderModal() {
       <div class="space-y-3 mb-6">
         <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Source</span><span class="text-body-sm font-body-sm font-bold">${esc(srcName)}</span></div>
         <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Tracking</span><span class="text-body-sm font-body-sm font-bold">${(settings.tracking_classes||['person']).join(', ')}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Frame Skip</span><span class="text-body-sm font-body-sm font-bold">Every ${settings.frame_skip||1} frame${settings.frame_skip>1?'s':''}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Max Frames</span><span class="text-body-sm font-body-sm font-bold">${settings.max_frames ? settings.max_frames : 'Unlimited'}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Segundos a Analizar</span><span class="text-body-sm font-body-sm font-bold">${settings.max_seconds ? settings.max_seconds + 's' : 'Video Completo'}</span></div>
         <div class="flex justify-between py-2"><span class="text-body-sm font-body-sm text-on-surface-variant">Areas</span><span class="text-body-sm font-body-sm font-bold">${src&&src.rois?src.rois.length:0} area${src&&src.rois&&src.rois.length!==1?'s':''}</span></div>
       </div>
       <div class="flex gap-3">
@@ -797,7 +1008,8 @@ function renderModal() {
     body.innerHTML = '<div class="text-center py-6"><div class="spinner mx-auto"></div><p class="text-body-md font-body-md text-on-surface-variant mt-4">Processing video analysis...</p><div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div><p id="progress-text" class="text-body-sm font-body-sm text-on-surface-variant">Starting...</p></div>';
   } else if (state.modalState === 'result') {
     document.getElementById('modal-title').textContent = 'Analysis Complete';
-    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-green-600">✓</div><h3 class="text-headline-md font-headline-md font-bold mb-2">Complete!</h3><p class="text-body-sm font-body-sm text-on-surface-variant">Session ID: ' + esc(state.modalSessionId) + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><a href="/api/sessions/' + esc(state.modalSessionId) + '/report" target="_blank" class="flex-1 bg-primary text-on-primary py-3 font-bold text-center hover:bg-primary-container transition-all" style="text-decoration:none">View Report</a></div>';
+    var sid = state.modalSessionId;
+    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-green-600">✓</div><h3 class="text-headline-md font-headline-md font-bold mb-2">Complete!</h3><p class="text-body-sm font-body-sm text-on-surface-variant">Session ID: ' + esc(sid) + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:brightness-110 transition-all" onclick="closeModal(); viewAnalysis(\'' + sid + '\')">View Report</button></div>';
   } else if (state.modalState === 'error') {
     document.getElementById('modal-title').textContent = 'Analysis Failed';
     body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-error">✗</div><p class="text-body-md font-body-md text-error">' + esc(state.modalError || 'Unknown error') + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:bg-primary-container transition-all" onclick="retryAnalysis()">Retry</button></div>';
@@ -810,7 +1022,7 @@ function startAnalysis() {
   if (!state.modalSourceId) return;
   const settings = getSourceSettings(state.modalSourceId);
   state.modalState = 'progress'; renderModal();
-  fetchJSON('/process', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ video_source_id: state.modalSourceId, tracking_classes: settings.tracking_classes || ['person'], frame_skip: settings.frame_skip || 1, max_frames: settings.max_frames, metrics: { entries: true, exits: true, occupancy: true, dwell_time: false, heatmap: false }, output: { report: true, annotated_video: true } }) })
+  fetchJSON('/process', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ video_source_id: state.modalSourceId, tracking_classes: settings.tracking_classes || ['person'], frame_skip: 1, max_seconds: settings.max_seconds, metrics: { entries: true, exits: true, occupancy: true, dwell_time: false, heatmap: false }, output: { report: true, annotated_video: true } }) })
   .then(({status, data}) => {
     if (status >= 400) { state.modalState = 'error'; state.modalError = data.error || 'Failed'; renderModal(); return; }
     state.pollingInterval = setInterval(pollJobStatus, 2000);
@@ -920,45 +1132,77 @@ async function fetchDwellTimes() {
 function exportReport() { alert('Export feature coming soon'); }
 
 // LOGS SIMULATION
-let logInterval = null;
+async function fetchLogs() {
+  const container = document.getElementById('logs-content');
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Cargando...</p></div>';
+  try {
+    const res = await fetch('/api/logs/data');
+    const data = await res.json();
+    if (!data || data.error) {
+      container.innerHTML = '<div class="text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">Error al cargar logs: ' + (data ? data.error : 'sin datos') + '</p></div>';
+      return;
+    }
+    var r = data.resources || {};
+    var problems = data.problems || [];
 
-function clearLogs() {
-  const container = document.getElementById('log-content');
-  if (container) container.innerHTML = '';
+    // ── Resource cards ──
+    var uptimeStr = formatUptime(r.uptime_seconds);
+    var cards = [
+      { label: 'CPU', value: (r.cpu_percent != null ? r.cpu_percent : '-') + '%', sub: (r.cpu_count || '-') + ' cores', icon: 'memory', color: 'text-primary' },
+      { label: 'Memoria', value: (r.memory_mb != null ? r.memory_mb : '-') + ' MB', sub: (r.memory_percent != null ? r.memory_percent + '% del total' : ''), icon: 'ram', color: 'text-secondary' },
+      { label: 'Disco', value: (r.disk_mb != null ? r.disk_mb : '-') + ' MB', sub: 'proyecto (sin .venv)', icon: 'storage', color: 'text-tertiary' },
+      { label: 'Actividad', value: uptimeStr, sub: (r.threads || '-') + ' hilos · ' + (r.open_files || '-') + ' archivos', icon: 'speed', color: 'text-primary' },
+    ];
+    var cardsHtml = '<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">' + cards.map(function(c) {
+      return '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-4"><div class="flex items-center justify-between mb-2"><p class="text-label-caps font-label-caps text-secondary uppercase">' + c.label + '</p><span class="material-symbols-outlined ' + c.color + ' opacity-50" style="font-size:20px">' + c.icon + '</span></div><p class="text-headline-md font-headline-md font-bold ' + c.color + '">' + c.value + '</p><p class="text-body-xs font-body-xs text-on-surface-variant mt-1">' + c.sub + '</p></div>';
+    }).join('') + '</div>';
+
+    // ── Python version row ──
+    var pyRow = r.python_version
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl px-5 py-3 mb-6 flex items-center gap-3"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">code</span><span class="text-body-sm text-on-surface-variant">Python <span class="font-data-mono font-bold text-on-surface">' + esc(r.python_version) + '</span></span></div>'
+      : '';
+
+    // ── Problems section ──
+    var problemsHtml = '';
+    if (problems.length === 0) {
+      problemsHtml = '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 text-center"><span class="material-symbols-outlined text-outline mb-2" style="font-size:40px">check_circle</span><p class="text-body-md font-body-md text-on-surface-variant">No hay problemas registrados.</p></div>';
+    } else {
+      var problemRows = '';
+      for (var p = 0; p < problems.length; p++) {
+        var pr = problems[p];
+        var icon = pr.type === 'session_failed' ? 'error' : (pr.type === 'overcapacity' ? 'warning' : 'timer_off');
+        var badgeClass = pr.type === 'session_failed' ? 'bg-error/10 text-error' : (pr.type === 'overcapacity' ? 'bg-secondary/10 text-secondary' : 'bg-tertiary/10 text-tertiary');
+        var badgeLabel = pr.type === 'session_failed' ? 'Fallo' : (pr.type === 'overcapacity' ? 'Sobrecarga' : 'Dwell Excedido');
+        var time = pr.occurred_at ? new Date(pr.occurred_at).toLocaleString() : '-';
+        problemRows += '<tr class="border-b border-outline-variant hover:bg-surface-container/50 transition-colors">' +
+          '<td class="p-3"><span class="material-symbols-outlined ' + badgeClass.replace('bg-', 'text-').split(' ')[0] + '" style="font-size:20px">' + icon + '</span></td>' +
+          '<td class="p-3"><span class="px-2 py-0.5 rounded text-xs font-bold ' + badgeClass + '">' + badgeLabel + '</span></td>' +
+          '<td class="p-3 text-body-sm text-on-surface">' + esc(pr.detail) + '</td>' +
+          '<td class="p-3 text-body-sm text-on-surface-variant font-data-mono">' + time + '</td>' +
+          '</tr>';
+      }
+      problemsHtml = '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl"><div class="flex items-center justify-between px-5 py-4 border-b border-outline-variant"><h3 class="text-label-caps font-label-caps text-secondary uppercase">Problemas y Alertas</h3><span class="text-body-sm text-on-surface-variant font-data-mono">' + problems.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium"></th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Detalle</th><th class="p-3 font-medium">Fecha</th></tr></thead><tbody>' + problemRows + '</tbody></table></div></div>';
+    }
+
+    container.innerHTML = cardsHtml + pyRow + problemsHtml;
+  } catch (e) {
+    container.innerHTML = '<div class="text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">Error al cargar logs: ' + e.message + '</p></div>';
+  }
 }
 
-function startLogSimulation() {
-  if (logInterval) return;
-  const logMessages = [
-    'DEBUG: Thread 4543 pooled successfully.',
-    'INFO: Buffer size normalized to 4096KB.',
-    'EVENT: Snapshot stored for event ID #8812.',
-    'WARN: Minor clock skew detected on node cluster (2ms).',
-    'SUCCESS: API response validated in 12ms.',
-    'INFO: Heartbeat acknowledged from control-plane.',
-    'DEBUG: Cache flush completed in 4.2ms.',
-    'EVENT: Stream reconnection successful (attempt 2/3).',
-    'INFO: Model inference batch queued (size=16).',
-  ];
-  const colors = ['text-outline', 'text-outline', 'text-primary', 'text-on-error bg-error/10 px-1', 'text-outline'];
-  logInterval = setInterval(() => {
-    const container = document.getElementById('log-content');
-    if (!container) return;
-    const time = new Date().toISOString().replace('T', ' ').split('.')[0];
-    const msg = logMessages[Math.floor(Math.random() * logMessages.length)];
-    const cls = colors[Math.floor(Math.random() * colors.length)];
-    const el = document.createElement('p');
-    el.className = cls + ' opacity-0 transition-opacity duration-500';
-    el.innerHTML = '<span class="text-secondary">[' + time + ']</span> ' + msg;
-    container.appendChild(el);
-    setTimeout(() => el.classList.remove('opacity-0'), 100);
-    const scrollContainer = document.getElementById('log-container');
-    if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
-  }, 3000);
-}
-
-function stopLogSimulation() {
-  if (logInterval) { clearInterval(logInterval); logInterval = null; }
+function formatUptime(sec) {
+  if (sec == null) return '-';
+  var d = Math.floor(sec / 86400);
+  var h = Math.floor((sec % 86400) / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  var s = Math.round(sec % 60);
+  var parts = [];
+  if (d > 0) parts.push(d + 'd');
+  if (h > 0) parts.push(h + 'h');
+  if (m > 0) parts.push(m + 'm');
+  parts.push(s + 's');
+  return parts.join(' ');
 }
 
 // FILE UPLOAD
@@ -989,36 +1233,187 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 async function fetchDashboard() {
-  const dashCards = document.getElementById('dash-cards');
-  if (!dashCards) return;
+  var dashEl = document.getElementById('dash-cards');
+  if (dashEl) dashEl.innerHTML = '<div class="col-span-full text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Cargando...</p></div>';
   try {
     const res = await fetch('/api/dashboard');
-    const data = await res.json();
-    dashCards.innerHTML = '<div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Total Entradas</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.total_entries || 0) + '</p></div><div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Total Salidas</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.total_exits || 0) + '</p></div><div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Pico Ocupacion</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.sum_peak || 0) + '</p></div><div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Analisis Totales</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.session_count || 0) + '</p></div>';
+    const d = await res.json();
+    renderDashCards(d);
+    renderSourceChart(d.events_by_source);
+    renderROIChart(d.top_rois);
+    renderRecentSessions(d.recent_sessions);
+    renderHourlyChart(d.hourly_distribution);
   } catch (e) {
-    dashCards.innerHTML = '<div class="col-span-full text-center py-8 text-error">Error cargando dashboard</div>';
+    const el = document.getElementById('dash-cards');
+    if (el) el.innerHTML = '<div class="col-span-full text-center py-8 text-error">Error cargando dashboard</div>';
   }
+}
+
+function renderDashCards(d) {
+  const container = document.getElementById('dash-cards');
+  if (!container) return;
+  const cards = [
+    { label: 'Entradas', value: d.total_entries || 0, icon: 'login', color: 'text-primary' },
+    { label: 'Salidas', value: d.total_exits || 0, icon: 'logout', color: 'text-secondary' },
+    { label: 'Entidades Unicas', value: d.total_entities || 0, icon: 'groups', color: 'text-tertiary' },
+    { label: 'Horas Analizadas', value: (d.total_hours_analyzed || 0) + 'h', icon: 'schedule', color: 'text-primary' },
+    { label: 'Fuentes Activas', value: (d.sources_with_rois || 0) + '/' + (d.total_sources || 0), icon: 'videocam', color: 'text-tertiary' },
+  ];
+  container.innerHTML = cards.map(c => `
+    <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-label-caps font-label-caps text-secondary uppercase">${c.label}</p>
+        <span class="material-symbols-outlined ${c.color} opacity-60" style="font-size:20px">${c.icon}</span>
+      </div>
+      <p class="text-headline-lg font-headline-lg font-bold ${c.color}">${c.value}</p>
+    </div>
+  `).join('');
+}
+
+function renderSourceChart(sources) {
+  const el = document.getElementById('dash-source-chart');
+  if (!el) return;
+  if (!sources || sources.length === 0) {
+    el.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-8">Sin datos de actividad por fuente.</p>';
+    return;
+  }
+  const maxVal = Math.max(...sources.map(s => (s.entries || 0) + (s.exits || 0)), 1);
+  el.innerHTML = sources.map(s => {
+    const total = (s.entries || 0) + (s.exits || 0);
+    const pct = Math.max((total / maxVal) * 100, 4);
+    const entryPct = total > 0 ? ((s.entries || 0) / total) * 100 : 0;
+    return `
+      <div>
+        <div class="flex justify-between text-body-sm font-body-sm mb-1">
+          <span class="text-on-surface font-medium">${esc(s.source_name)}</span>
+          <span class="text-on-surface-variant">${s.entries || 0} ent / ${s.exits || 0} sal</span>
+        </div>
+        <div class="w-full bg-surface-container-higher h-5 rounded-full overflow-hidden flex">
+          <div class="bg-primary h-full transition-all" style="width:${Math.round(entryPct * pct / 100)}%" title="Entradas: ${s.entries || 0}"></div>
+          <div class="bg-secondary h-full transition-all" style="width:${Math.round((100 - entryPct) * pct / 100)}%" title="Salidas: ${s.exits || 0}"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderROIChart(rois) {
+  const el = document.getElementById('dash-roi-chart');
+  if (!el) return;
+  if (!rois || rois.length === 0) {
+    el.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-8">Sin datos de areas.</p>';
+    return;
+  }
+  const maxVal = Math.max(...rois.map(r => (r.entries || 0) + (r.exits || 0)), 1);
+  el.innerHTML = rois.map(r => {
+    const total = (r.entries || 0) + (r.exits || 0);
+    const pct = Math.max((total / maxVal) * 100, 4);
+    return `
+      <div>
+        <div class="flex justify-between text-body-sm font-body-sm mb-1">
+          <span class="text-on-surface font-medium">${esc(r.name)}</span>
+          <span class="text-on-surface-variant">${r.entries || 0} entradas</span>
+        </div>
+        <div class="w-full bg-surface-container-higher h-2 rounded-full overflow-hidden">
+          <div class="bg-tertiary h-full rounded-full transition-all" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderRecentSessions(sessions) {
+  const el = document.getElementById('dash-recent-sessions');
+  if (!el) return;
+  if (!sessions || sessions.length === 0) {
+    el.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-4">No hay analisis recientes.</p>';
+    return;
+  }
+  const rows = sessions.map(s => {
+    const dur = formatDuration(s.duration_seconds);
+    const statusBadge = s.status === 'completed'
+      ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-primary"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span>Completado</span>'
+      : '<span class="inline-flex items-center gap-1 text-xs font-medium text-error"><span class="w-1.5 h-1.5 bg-error rounded-full"></span>Fallido</span>';
+    const date = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
+    return `<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors">
+      <td class="p-3 text-body-sm font-body-sm">${esc(s.source_name || '-')}</td>
+      <td class="p-3 text-body-sm text-on-surface-variant">${date}</td>
+      <td class="p-3 text-body-sm text-on-surface-variant font-data-mono">${dur}</td>
+      <td class="p-3">${statusBadge}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-left"><thead>
+    <tr class="text-label-caps text-secondary uppercase border-b border-outline-variant">
+      <th class="p-3 font-medium">Fuente</th>
+      <th class="p-3 font-medium">Fecha</th>
+      <th class="p-3 font-medium">Duracion</th>
+      <th class="p-3 font-medium">Estado</th>
+    </tr>
+  </thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function renderHourlyChart(hourly) {
+  const el = document.getElementById('dash-hourly-chart');
+  if (!el) return;
+  if (!hourly || hourly.length === 0) {
+    el.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-8">Sin datos de distribucion horaria.</p>';
+    return;
+  }
+  const maxVal = Math.max(...hourly.map(h => Math.max(h.entries || 0, h.exits || 0)), 1);
+  const full = Array.from({length: 24}, (_, i) => {
+    const found = hourly.find(h => h.hour === i);
+    return found || { hour: i, entries: 0, exits: 0 };
+  });
+  el.innerHTML = `<div class="h-full flex items-end gap-px relative">
+    <div class="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
+      <div class="border-t border-outline h-px w-full"></div>
+      <div class="border-t border-outline h-px w-full"></div>
+      <div class="border-t border-outline h-px w-full"></div>
+    </div>
+    ${full.map(h => {
+      const entryPct = Math.max((h.entries / maxVal) * 100, 2);
+      const exitPct = Math.max((h.exits / maxVal) * 100, 2);
+      return `<div class="flex-1 flex flex-col items-center justify-end self-stretch relative z-10" style="padding-bottom:14px">
+        <div class="flex gap-px items-end justify-center flex-1 w-full">
+          <div class="w-[7px] bg-primary rounded-t-sm transition-all min-h-[2px]" style="height:${entryPct}%" title="${String(h.hour).padStart(2,'0')}:00 Entradas: ${h.entries}"></div>
+          <div class="w-[7px] bg-secondary rounded-t-sm transition-all min-h-[2px]" style="height:${exitPct}%" title="${String(h.hour).padStart(2,'0')}:00 Salidas: ${h.exits}"></div>
+        </div>
+        ${h.hour % 4 === 0 ? `<span class="text-[8px] text-outline absolute bottom-0">${String(h.hour).padStart(2,'0')}</span>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 async function fetchAnalyses() {
   const container = document.getElementById('analyses-content');
   if (!container) return;
+  var errDiv = document.getElementById('analyses-error');
+  if (errDiv) errDiv.classList.add('hidden');
+  container.innerHTML = '<div class="col-span-full text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Cargando...</p></div>';
   try {
     const res = await fetch('/api/analyses');
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) {
-      container.innerHTML = '<div class="col-span-full text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No hay analisis ainda.</p></div>';
+      container.innerHTML = '<div class="col-span-full text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No hay analisis aun.</p></div>';
       return;
     }
     var rows = '';
     for (var i = 0; i < data.length; i++) {
       var s = data[i];
       var started = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
-      var dur = s.duration_seconds ? (s.duration_seconds / 60).toFixed(1) + ' min' : '-';
-      var statusClass = (s.status === 'completed') ? 'bg-primary/10 text-primary' : 'bg-secondary/10 text-secondary';
-      rows += '<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors"><td class="p-4 text-body-sm font-body-sm">' + (s.source_name || '-') + '</td><td class="p-4 text-body-sm font-body-sm text-on-surface-variant">' + started + '</td><td class="p-4 text-body-sm font-body-sm text-on-surface-variant">' + dur + '</td><td class="p-4 text-body-sm font-body-sm"><span class="px-2 py-1 rounded text-label-caps text-xs font-bold ' + statusClass + '">' + (s.status || 'completed') + '</span></td><td class="p-4 text-body-sm font-body-sm"><button class="text-primary hover:underline text-label-caps" onclick="viewAnalysis(\'' + s.id + '\')">Ver</button></td></tr>';
+      var dur = formatDuration(s.duration_seconds);
+      var typeLabel = sourceTypeLabel(s.source_type);
+      var statusBadge = s.status === 'completed'
+        ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span>Completado</span>'
+        : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/10 text-error"><span class="w-1.5 h-1.5 bg-error rounded-full"></span>Fallido</span>';
+      rows += '<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors">' +
+        '<td class="p-4 text-body-sm font-body-sm text-on-surface">' + esc(s.source_name || '-') + '</td>' +
+        '<td class="p-4"><span class="text-label-caps text-xs font-bold text-on-surface-variant bg-surface-container-higher px-2 py-1 rounded">' + typeLabel + '</span></td>' +
+        '<td class="p-4 text-body-sm text-on-surface-variant">' + started + '</td>' +
+        '<td class="p-4 text-body-sm font-data-mono text-on-surface-variant">' + dur + '</td>' +
+        '<td class="p-4">' + statusBadge + '</td>' +
+        '<td class="p-4 text-right"><button class="bg-primary text-on-primary text-label-caps font-bold px-4 py-1.5 rounded-lg uppercase hover:brightness-110 transition-all" onclick="viewAnalysis(\'' + s.id + '\')">Ver detalle</button></td>' +
+        '</tr>';
     }
-    container.innerHTML = '<table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-4">Fuente</th><th class="p-4">Fecha</th><th class="p-4">Duracion</th><th class="p-4">Estado</th><th class="p-4"></th></tr></thead><tbody>' + rows + '</tbody></table>';
+    container.innerHTML = '<div class="overflow-x-auto bg-surface-container-lowest border border-outline-variant rounded-xl"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase bg-surface-container-low"><th class="p-4 font-medium">Fuente</th><th class="p-4 font-medium">Tipo</th><th class="p-4 font-medium">Fecha</th><th class="p-4 font-medium">Duracion</th><th class="p-4 font-medium">Estado</th><th class="p-4 font-medium text-right">Accion</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   } catch (e) {
     var errMsg = document.getElementById('analyses-error-msg');
     if (errMsg) errMsg.textContent = e.message;
@@ -1033,22 +1428,96 @@ async function viewAnalysis(id) {
     var res = await fetch('/api/analyses/' + id);
     if (!res.ok) return;
     var data = await res.json();
+
+    var sourceName = esc(data.source_name || '-');
+    var dateStr = data.started_at ? new Date(data.started_at).toLocaleString() : '-';
+    var durStr = formatDuration(data.duration_seconds);
+    var statusBadge = data.status === 'completed'
+      ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-primary"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span>Completado</span>'
+      : '<span class="inline-flex items-center gap-1 text-xs font-medium text-error"><span class="w-1.5 h-1.5 bg-error rounded-full"></span>Fallido</span>';
+
+    var totalEntities = data.total_entities || 0;
+    var totalEntries = data.total_entries || 0;
+    var totalExits = data.total_exits || 0;
+    var totalEvents = data.total_events || 0;
+
+    // ── Header summary cards ──
+    var headerCards = [
+      { label: 'Entradas', value: totalEntries, icon: 'login', color: 'text-primary' },
+      { label: 'Salidas', value: totalExits, icon: 'logout', color: 'text-secondary' },
+      { label: 'Entidades Detectadas', value: totalEntities, icon: 'groups', color: 'text-tertiary' },
+      { label: 'Eventos Totales', value: totalEvents, icon: 'timeline', color: 'text-primary' },
+    ];
+    var headerHtml = '<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">' + headerCards.map(function(c) {
+      return '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-2"><p class="text-label-caps font-label-caps text-secondary uppercase">' + c.label + '</p><span class="material-symbols-outlined ' + c.color + ' opacity-60" style="font-size:20px">' + c.icon + '</span></div><p class="text-headline-md font-headline-md font-bold ' + c.color + '">' + c.value + '</p></div>';
+    }).join('') + '</div>';
+
+    // ── Video + Info row (side by side) ──
+    var videoUrl = data.output_video_path ? data.output_video_path : null;
+    var videoHtml = videoUrl
+      ? '<div class="lg:w-1/2"><div class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden"><video class="w-full aspect-video object-contain bg-black" controls preload="metadata"><source src="' + videoUrl + '" type="video/mp4"></video><div class="px-4 py-2 border-t border-outline-variant flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:16px">download</span><a href="' + videoUrl + '" download class="text-body-sm text-primary hover:underline">Descargar video</a></div></div></div>'
+      : '';
+    var infoHtml = '<div class="flex flex-col lg:flex-row gap-6 mb-6">' + videoHtml +
+      '<div class="' + (videoUrl ? 'lg:w-1/2' : 'w-full') + '"><div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 h-full"><div class="grid grid-cols-2 gap-4"><div><p class="text-label-caps text-secondary uppercase text-xs mb-1">Fuente</p><p class="text-body-md font-body-md font-bold text-on-surface">' + sourceName + '</p></div><div><p class="text-label-caps text-secondary uppercase text-xs mb-1">Fecha</p><p class="text-body-md font-body-md text-on-surface-variant">' + dateStr + '</p></div><div><p class="text-label-caps text-secondary uppercase text-xs mb-1">Duracion</p><p class="text-body-md font-body-md text-on-surface-variant font-data-mono">' + durStr + '</p></div><div><p class="text-label-caps text-secondary uppercase text-xs mb-1">Estado</p><p class="text-body-md font-body-md">' + statusBadge + '</p></div></div></div></div></div>';
+
+    // ── Metrics per ROI table ──
     var metricsRows = '';
-    if (Array.isArray(data.metrics)) {
+    if (Array.isArray(data.metrics) && data.metrics.length > 0) {
       for (var m = 0; m < data.metrics.length; m++) {
         var met = data.metrics[m];
-        var roiLabel = met.roi_id ? met.roi_id.substring(0, 8) + '...' : '-';
+        var roiName = met.roi_id ? met.roi_id.substring(0, 8) + '...' : '-';
         var dwellStr = met.avg_dwell_seconds ? met.avg_dwell_seconds.toFixed(1) + 's' : '-';
-        metricsRows += '<tr class="border-b border-outline-variant"><td class="p-3 text-body-sm">' + roiLabel + '</td><td class="p-3 text-body-sm text-center">' + (met.entries || 0) + '</td><td class="p-3 text-body-sm text-center">' + (met.exits || 0) + '</td><td class="p-3 text-body-sm text-center">' + (met.max_occupancy || 0) + '</td><td class="p-3 text-body-sm text-center">' + dwellStr + '</td></tr>';
+        metricsRows += '<tr class="border-b border-outline-variant">' +
+          '<td class="p-3 text-body-sm font-body-sm text-on-surface">' + esc(roiName) + '</td>' +
+          '<td class="p-3 text-body-sm text-center font-data-mono text-primary font-bold">' + (met.entries || 0) + '</td>' +
+          '<td class="p-3 text-body-sm text-center font-data-mono text-secondary font-bold">' + (met.exits || 0) + '</td>' +
+          '<td class="p-3 text-body-sm text-center font-data-mono text-on-surface-variant">' + (met.max_occupancy || 0) + '</td>' +
+          '<td class="p-3 text-body-sm text-center font-data-mono text-on-surface-variant">' + dwellStr + '</td></tr>';
       }
     }
-    var metricsTable = metricsRows ? '<table class="w-full text-left mb-6"><thead><tr class="border-b text-label-caps text-secondary uppercase"><th class="p-3">ROI</th><th class="p-3 text-center">Entradas</th><th class="p-3 text-center">Salidas</th><th class="p-3 text-center">Pico</th><th class="p-3 text-center">Dwell Avg</th></tr></thead><tbody>' + metricsRows + '</tbody></table>' : '<p class="text-body-sm text-on-surface-variant mb-6">Sin metricas disponibles.</p>';
-    var detailHtml = '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-6"><div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4"><div><p class="text-label-caps text-secondary uppercase">Fuente</p><p class="text-body-md font-body-md">' + (data.source_name || '-') + '</p></div><div><p class="text-label-caps text-secondary uppercase">Fecha</p><p class="text-body-md font-body-md">' + (data.started_at ? new Date(data.started_at).toLocaleString() : '-') + '</p></div><div><p class="text-label-caps text-secondary uppercase">Duracion</p><p class="text-body-md font-body-md">' + (data.duration_seconds ? (data.duration_seconds / 60).toFixed(1) + ' min' : '-') + '</p></div><div><p class="text-label-caps text-secondary uppercase">Estado</p><p class="text-body-md font-body-md">' + (data.status || 'completed') + '</p></div></div></div><h3 class="text-headline-md font-headline-md mb-4">Metricas por ROI</h3>' + metricsTable;
+    var metricsTable = metricsRows
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 mb-6"><h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Metricas por Area (ROI)</h4><div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">ROI</th><th class="p-3 font-medium text-center">Entradas</th><th class="p-3 font-medium text-center">Salidas</th><th class="p-3 font-medium text-center">Pico</th><th class="p-3 font-medium text-center">Dwell Avg</th></tr></thead><tbody>' + metricsRows + '</tbody></table></div></div>'
+      : '';
+
+    // ── Individual event log ──
+    var eventRows = '';
+    if (Array.isArray(data.zone_events) && data.zone_events.length > 0) {
+      for (var e = 0; e < data.zone_events.length; e++) {
+        var ev = data.zone_events[e];
+        var evTime = ev.occurred_at ? new Date(ev.occurred_at).toLocaleTimeString() : '-';
+        var evTypeIcon = ev.event_type === 'entry'
+          ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-primary"><span class="w-2 h-2 bg-primary rounded-full"></span>ENTRADA</span>'
+          : '<span class="inline-flex items-center gap-1 text-xs font-medium text-secondary"><span class="w-2 h-2 bg-secondary rounded-full"></span>SALIDA</span>';
+        var dwellStr2 = ev.dwell_seconds ? formatDwell(ev.dwell_seconds) : '-';
+        eventRows += '<tr class="border-b border-outline-variant hover:bg-surface-container/50 transition-colors">' +
+          '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + evTime + '</td>' +
+          '<td class="p-3">' + evTypeIcon + '</td>' +
+          '<td class="p-3 text-body-sm text-on-surface">' + esc(ev.roi_name || '-') + '</td>' +
+          '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + (ev.track_id != null ? 'ID ' + ev.track_id : '-') + '</td>' +
+          '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + (ev.frame_number != null ? '#' + ev.frame_number : '-') + '</td>' +
+          '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant text-right">' + dwellStr2 + '</td></tr>';
+      }
+    }
+
+    var eventSection = eventRows
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-4"><h4 class="text-label-caps font-label-caps text-secondary uppercase">Registro de Eventos</h4><span class="text-body-sm text-on-surface-variant">' + data.zone_events.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">Hora</th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Area</th><th class="p-3 font-medium">Track ID</th><th class="p-3 font-medium">Frame</th><th class="p-3 font-medium text-right">Dwell</th></tr></thead><tbody>' + eventRows + '</tbody></table></div></div>'
+      : '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><p class="text-body-sm text-on-surface-variant text-center py-4">Sin eventos registrados para este analisis.</p></div>';
+
+    var detailHtml = headerHtml + infoHtml + metricsTable + eventSection;
     document.getElementById('analysis-detail-content').innerHTML = detailHtml;
-    document.getElementById('tab-historial').classList.add('hidden');
+    document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.add('hidden'); });
     var detailTab = document.getElementById('tab-analysis-detail');
     if (detailTab) detailTab.classList.remove('hidden');
-    state.tab = 'analysis-detail';
+    state.tab = 'historial';
+    document.querySelectorAll('.nav-link').forEach(function(a) {
+      var isHistorial = a.dataset.tab === 'historial';
+      a.classList.toggle('text-primary', isHistorial);
+      a.classList.toggle('font-bold', isHistorial);
+      a.classList.toggle('border-r-4', isHistorial);
+      a.classList.toggle('border-primary', isHistorial);
+      a.classList.toggle('bg-surface-container-high', isHistorial);
+      a.classList.toggle('text-on-surface-variant', !isHistorial);
+    });
   } catch (e) {
     console.error('viewAnalysis error', e);
   }

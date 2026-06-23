@@ -15,7 +15,7 @@ def main() -> None:
     # HOST=0.0.0.0 para aceptar conexiones desde el port-forward de Docker
     # Default 0.0.0.0 para que funcione out-of-the-box; se puede override
     # con la env var HOST para desarrollo local en 127.0.0.1 si hace falta.
-    host = os.environ.get("HOST", "0.0.0.0")
+    host = os.environ.get("HOST", "127.0.0.1")
     server = ThreadingHTTPServer((host, 8000), AppHandler)
     print(f"Servidor en http://{host}:8000")
     server.serve_forever()

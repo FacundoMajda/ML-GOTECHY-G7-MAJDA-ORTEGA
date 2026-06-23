@@ -71,25 +71,168 @@ class MetricsService:
         return results
 
     def get_dashboard(self) -> dict:
-        """Aggregate totals across all sessions."""
-        row = execute_query(
+        """Aggregate real metrics across all entities for the dashboard."""
+        # ── 1. Summary counts ──
+        summary = execute_query(
             """
             SELECT
-                COALESCE(SUM(entries), 0)   AS total_entries,
-                COALESCE(SUM(exits), 0)     AS total_exits,
-                COALESCE(SUM(max_occupancy), 0) AS sum_peak,
-                COUNT(DISTINCT session_id)  AS session_count
+                COALESCE(SUM(entries), 0),
+                COALESCE(SUM(exits), 0),
+                COUNT(DISTINCT session_id),
+                COALESCE(SUM(max_occupancy), 0)
             FROM metric_snapshot
-            """,
+            """, fetch="one",
+        )
+        total_entries = summary[0] if summary else 0
+        total_exits   = summary[1] if summary else 0
+        session_count = summary[2] if summary else 0
+
+        # ── 2. Unique entities tracked ──
+        ent = execute_query(
+            "SELECT COUNT(DISTINCT track_id) FROM tracked_entity", fetch="one",
+        )
+        total_entities = ent[0] if ent else 0
+
+        # ── 3. Sources & ROIs ──
+        src = execute_query(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM video_source),
+                (SELECT COUNT(DISTINCT video_source_id) FROM roi)
+            """, fetch="one",
+        )
+        total_sources     = src[0] if src else 0
+        sources_with_rois = src[1] if src else 0
+
+        # ── 4. Total hours analyzed ──
+        hrs = execute_query(
+            """
+            SELECT COALESCE(EXTRACT(EPOCH FROM SUM(ended_at - started_at)), 0) / 3600.0
+            FROM detection_session WHERE ended_at IS NOT NULL AND status = 'completed'
+            """, fetch="one",
+        )
+        total_hours = round(float(hrs[0]), 1) if hrs and hrs[0] else 0
+
+        # ── 5. Average occupancy across all snapshots ──
+        occ = execute_query(
+            "SELECT COALESCE(AVG(count_inside), 0) FROM roi_occupancy_snapshot",
             fetch="one",
         )
-        if not row:
-            return {"total_entries": 0, "total_exits": 0, "sum_peak": 0, "session_count": 0}
+        avg_occupancy = round(float(occ[0]), 1) if occ else 0
+
+        # ── 6. Average dwell time ──
+        dwl = execute_query(
+            """
+            SELECT COALESCE(AVG(avg_dwell_seconds), 0)
+            FROM metric_snapshot WHERE avg_dwell_seconds IS NOT NULL
+            """, fetch="one",
+        )
+        avg_dwell = round(float(dwl[0]), 1) if dwl else 0
+
+        # ── 7. Analysis success rate ──
+        st = execute_query(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'completed'),
+                COUNT(*) FILTER (WHERE status = 'failed')
+            FROM detection_session
+            """, fetch="one",
+        )
+        completed = st[0] if st else 0
+        failed    = st[1] if st else 0
+        total_analyses = completed + failed
+
+        # ── 8. Top 5 ROIs by activity ──
+        rois_raw = execute_query(
+            """
+            SELECT r.name, SUM(ms.entries), SUM(ms.exits)
+            FROM metric_snapshot ms
+            JOIN roi r ON r.id = ms.roi_id
+            GROUP BY r.id, r.name
+            ORDER BY SUM(ms.entries) + SUM(ms.exits) DESC
+            LIMIT 5
+            """, fetch="all",
+        )
+        top_rois = [
+            {"name": row[0], "entries": row[1] or 0, "exits": row[2] or 0}
+            for row in rois_raw
+        ]
+
+        # ── 9. Events grouped by video source ──
+        evsrc_raw = execute_query(
+            """
+            SELECT vs.name, SUM(ms.entries), SUM(ms.exits)
+            FROM metric_snapshot ms
+            JOIN detection_session ds ON ds.id = ms.session_id
+            JOIN video_source vs ON vs.id = ds.video_source_id
+            GROUP BY vs.id, vs.name
+            ORDER BY SUM(ms.entries) + SUM(ms.exits) DESC
+            LIMIT 5
+            """, fetch="all",
+        )
+        events_by_source = [
+            {"source_name": row[0], "entries": row[1] or 0, "exits": row[2] or 0}
+            for row in evsrc_raw
+        ]
+
+        # ── 10. Last 5 analyses ──
+        recent_raw = execute_query(
+            """
+            SELECT ds.id::text, vs.name, ds.started_at,
+                COALESCE(EXTRACT(EPOCH FROM (ds.ended_at - ds.started_at)), 0)::float,
+                ds.status
+            FROM detection_session ds
+            JOIN video_source vs ON vs.id = ds.video_source_id
+            ORDER BY ds.started_at DESC NULLS LAST
+            LIMIT 5
+            """, fetch="all",
+        )
+        recent_sessions = [
+            {
+                "id": row[0],
+                "source_name": row[1],
+                "started_at": row[2].isoformat() if row[2] else None,
+                "duration_seconds": row[3] or 0,
+                "status": row[4] or "completed",
+            }
+            for row in recent_raw
+        ]
+
+        # ── 11. Hourly event distribution (last 7 days) ──
+        hourly_raw = execute_query(
+            """
+            SELECT
+                EXTRACT(HOUR FROM occurred_at)::int,
+                COUNT(*) FILTER (WHERE event_type = 'entry'),
+                COUNT(*) FILTER (WHERE event_type = 'exit')
+            FROM zone_event
+            WHERE occurred_at >= NOW() - INTERVAL '7 days'
+            GROUP BY 1
+            ORDER BY 1
+            """, fetch="all",
+        )
+        hourly_distribution = [
+            {"hour": row[0], "entries": row[1] or 0, "exits": row[2] or 0}
+            for row in hourly_raw
+        ]
+
         return {
-            "total_entries": row[0] or 0,
-            "total_exits": row[1] or 0,
-            "sum_peak": row[2] or 0,
-            "session_count": row[3] or 0,
+            "total_entries": total_entries,
+            "total_exits": total_exits,
+            "session_count": session_count,
+            "total_entities": total_entities,
+            "total_sources": total_sources,
+            "sources_with_rois": sources_with_rois,
+            "total_hours_analyzed": total_hours,
+            "avg_occupancy": avg_occupancy,
+            "avg_dwell_seconds": avg_dwell,
+            "completed_analyses": completed,
+            "failed_analyses": failed,
+            "total_analyses": total_analyses,
+            "top_rois": top_rois,
+            "events_by_source": events_by_source,
+            "recent_sessions": recent_sessions,
+            "hourly_distribution": hourly_distribution,
         }
 
     def get_trend(self, roi_id: uuid.UUID) -> list:

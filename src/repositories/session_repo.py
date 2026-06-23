@@ -94,7 +94,9 @@ class SessionRepository:
                 ds.ended_at,
                 EXTRACT(EPOCH FROM (ds.ended_at - ds.started_at)) AS duration_seconds,
                 COALESCE(te.entity_count, 0) AS total_entities,
-                COALESCE(ze.event_count, 0) AS total_events
+                COALESCE(ze.event_count, 0) AS total_events,
+                ds.output_video_path,
+                ds.status
             FROM detection_session ds
             LEFT JOIN video_source vs ON ds.video_source_id = vs.id
             LEFT JOIN (
@@ -126,6 +128,8 @@ class SessionRepository:
             "duration_seconds": float(row[5]) if row[5] is not None else None,
             "total_entities": int(row[6]),
             "total_events": int(row[7]),
+            "output_video_path": row[8],
+            "status": row[9] if row[9] else 'completed',
         }
         print(f"[DEBUG] SessionRepository.get_by_id: returning {result}", flush=True)
         return result

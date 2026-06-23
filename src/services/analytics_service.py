@@ -526,6 +526,25 @@ class AnalyticsService:
             if writer:
                 print(f"[DEBUG] AnalyticsService.process: releasing writer", flush=True)
                 writer.release()
+                # Re-encode FMP4 → H.264 via bundled FFmpeg so browsers can play
+                if out_path:
+                    try:
+                        from imageio_ffmpeg import get_ffmpeg_exe
+                        import subprocess
+                        ffmpeg = get_ffmpeg_exe()
+                        h264_path = out_path.with_name(out_path.stem + "_h264" + out_path.suffix)
+                        subprocess.run(
+                            [ffmpeg, "-y", "-i", str(out_path),
+                             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                             "-c:a", "aac", str(h264_path)],
+                            capture_output=True, timeout=120,
+                        )
+                        if h264_path.exists():
+                            out_path.unlink(missing_ok=True)          # remove FMP4
+                            h264_path.rename(out_path)                # replace with H.264
+                            print(f"[DEBUG] Re-encoded to H.264: {out_path}", flush=True)
+                    except Exception as e:
+                        print(f"[WARN] FFmpeg re-encode failed, keeping original: {e}", flush=True)
             print(f"[DEBUG] AnalyticsService.process: releasing provider", flush=True)
             self.provider.release()
             print(f"[DEBUG] AnalyticsService.process: EXIT finally block", flush=True)

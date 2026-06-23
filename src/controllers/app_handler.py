@@ -1,9 +1,11 @@
 # src/controllers/app_handler.py
 import json
 import mimetypes
+import os
 import re
 import shutil
 import threading
+import time
 import traceback
 import uuid
 from cgi import FieldStorage
@@ -19,6 +21,7 @@ from src.config.settings import REPORTS_DIR, UPLOADS_DIR
 from src.models.contracts import ROIConfig, VideoSourceConfig
 from src.models.enums import SourceType
 from src.providers.youtube_utils import extract_stream_url
+from src.repositories.db import execute_query
 from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
 from src.repositories.roi_repo import ROIRepository
 from src.repositories.session_repo import SessionRepository
@@ -216,6 +219,20 @@ def _source_to_dict(src: VideoSourceConfig, rois: list[ROIConfig]) -> dict:
     return result
 
 
+def _normalize_video_path(path: str | None) -> str | None:
+    """Return a URL path for serving the output video via /api/video/<filename>."""
+    if not path:
+        return None
+    filename = path.replace("\\", "/").split("/")[-1]
+    if not filename:
+        return None
+    project_root = (BASE_DIR / "..").resolve()
+    video_path = project_root / "outputs" / filename
+    if video_path.exists() and video_path.is_file():
+        return f"/api/video/{filename}"
+    return None
+
+
 # ── Route tables ──────────────────────────────────────────────────────────────
 
 ROUTES_GET = {
@@ -230,6 +247,7 @@ ROUTES_GET = {
     "/api/dashboard": "_api_dashboard",
     "/api/analyses": "_api_analyses_list",
     re.compile(r"^/api/analyses/([^/]+)$"): "_api_analyses_detail",
+    "/api/logs/data": "_api_logs_data",
 }
 
 ROUTES_POST = {
@@ -272,12 +290,25 @@ class AppHandler(BaseHTTPRequestHandler):
     # ── HTTP method handlers ───────────────────────────────────────────────
 
     def do_GET(self) -> None:
-        print(f"[DEBUG] AppHandler.do_GET: path={self.path}", flush=True)
         parsed = urlparse(self.path)
         path = parsed.path
 
         if path == "/":
             self._send_html(render_home())
+            return
+
+        if path.startswith("/api/video/"):
+            filename = path.removeprefix("/api/video/")
+            project_root = (BASE_DIR / "..").resolve()
+            from src.config.settings import OUTPUT_DIR
+            video_path = project_root / OUTPUT_DIR / filename
+            if not str(video_path.resolve()).startswith(str((project_root / OUTPUT_DIR).resolve())):
+                self.send_error(403)
+                return
+            if not video_path.exists() or not video_path.is_file():
+                self.send_error(404)
+                return
+            self._send_file(video_path.resolve())
             return
 
         if path.startswith("/files/"):
@@ -522,6 +553,38 @@ class AppHandler(BaseHTTPRequestHandler):
                 }
                 for s in snaps
             ]
+            # Totals
+            total_entries = sum(s['entries'] for s in cleaned_snaps)
+            total_exits = sum(s['exits'] for s in cleaned_snaps)
+            total_max_occ = sum(s['max_occupancy'] for s in cleaned_snaps)
+
+            # Individual zone events with ROI name for this session
+            events = execute_query(
+                """
+                SELECT ze.id::text, ze.event_type, ze.occurred_at,
+                       ze.track_id, ze.frame_number, ze.dwell_seconds,
+                       r.name AS roi_name
+                FROM zone_event ze
+                JOIN roi r ON r.id = ze.roi_id
+                WHERE ze.session_id = %s
+                ORDER BY ze.occurred_at
+                """,
+                (session_id,),
+                fetch="all",
+            )
+            zone_events = [
+                {
+                    "id": row[0],
+                    "event_type": row[1],
+                    "occurred_at": row[2].isoformat() if row[2] else None,
+                    "track_id": row[3],
+                    "frame_number": row[4],
+                    "dwell_seconds": float(row[5]) if row[5] is not None else None,
+                    "roi_name": row[6],
+                }
+                for row in events
+            ]
+
             self._send_json(200, {
                 'id': session['id'],
                 'source_name': session.get('source_name'),
@@ -530,7 +593,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 'ended_at': session.get('ended_at'),
                 'duration_seconds': session.get('duration_seconds'),
                 'status': session.get('status', 'completed'),
+                'output_video_path': _normalize_video_path(session.get('output_video_path')),
+                'total_entities': session.get('total_entities', 0),
+                'total_events': session.get('total_events', 0),
+                'total_entries': total_entries,
+                'total_exits': total_exits,
+                'total_max_occupancy': total_max_occ,
                 'metrics': cleaned_snaps,
+                'zone_events': zone_events,
             })
         except Exception as e:
             traceback.print_exc()
@@ -831,6 +901,119 @@ class AppHandler(BaseHTTPRequestHandler):
         updated = _roi_repo.get_by_id(roi_id)
         print(f"[DEBUG] AppHandler._api_update_roi_config: returning updated={updated}", flush=True)
         self._send_json(200, updated)
+
+    # ── Logs / Problems + Resources ───────────────────────────────────────
+
+    def _api_logs_data(self) -> None:
+        """GET /api/logs/data — system resources + problem events from DB."""
+        print('[DEBUG] AppHandler._api_logs_data: ENTRY', flush=True)
+        try:
+            import psutil
+            proc = psutil.Process()
+
+            # ── Failed sessions ──
+            failed_sessions = execute_query(
+                """SELECT s.id, s.started_at, s.status, vs.name AS source_name
+                   FROM detection_session s
+                   JOIN video_source vs ON vs.id = s.video_source_id
+                   WHERE s.status IS NOT NULL AND s.status != 'completed'
+                   ORDER BY s.started_at DESC LIMIT 20""",
+                fetch="all",
+            )
+            problems = []
+            for row in failed_sessions:
+                problems.append({
+                    "type": "session_failed",
+                    "session_id": str(row[0]),
+                    "source_name": row[3],
+                    "occurred_at": row[1].isoformat() if row[1] else None,
+                    "status": row[2],
+                    "detail": f"Analisis de '{row[3]}' finalizo con estado: {row[2]}",
+                })
+
+            # ── Overcapacity events ──
+            overcap = execute_query(
+                """SELECT ze.id::text, ze.occurred_at, ze.track_id,
+                          r.name AS roi_name, vs.name AS source_name
+                   FROM zone_event ze
+                   JOIN roi r ON r.id = ze.roi_id
+                   JOIN detection_session s ON s.id = ze.session_id
+                   JOIN video_source vs ON vs.id = s.video_source_id
+                   WHERE ze.event_type = 'overcapacity'
+                   ORDER BY ze.occurred_at DESC LIMIT 20""",
+                fetch="all",
+            )
+            for row in overcap:
+                problems.append({
+                    "type": "overcapacity",
+                    "zone_event_id": row[0],
+                    "roi_name": row[3],
+                    "source_name": row[4],
+                    "occurred_at": row[1].isoformat() if row[1] else None,
+                    "track_id": row[2],
+                    "detail": f"Sobrecapacidad en {row[3]} ({row[4]}) — track {row[2]}",
+                })
+
+            # ── Dwell exceeded events ──
+            dwell_exceeded = execute_query(
+                """SELECT ze.id::text, ze.occurred_at, ze.track_id, ze.dwell_seconds,
+                          r.name AS roi_name, vs.name AS source_name
+                   FROM zone_event ze
+                   JOIN roi r ON r.id = ze.roi_id
+                   JOIN detection_session s ON s.id = ze.session_id
+                   JOIN video_source vs ON vs.id = s.video_source_id
+                   WHERE ze.event_type = 'dwell_exceeded'
+                   ORDER BY ze.occurred_at DESC LIMIT 20""",
+                fetch="all",
+            )
+            for row in dwell_exceeded:
+                problems.append({
+                    "type": "dwell_exceeded",
+                    "zone_event_id": row[0],
+                    "roi_name": row[3],
+                    "source_name": row[5],
+                    "occurred_at": row[1].isoformat() if row[1] else None,
+                    "track_id": row[2],
+                    "dwell_seconds": float(row[4]) if row[4] is not None else None,
+                    "detail": f"Tiempo excedido en {row[3]} ({row[5]}) — track {row[2]} estuvo {float(row[4]):.0f}s"
+                              if row[4] is not None else
+                              f"Tiempo excedido en {row[3]} ({row[5]}) — track {row[2]}",
+                })
+
+            problems.sort(key=lambda p: p.get("occurred_at") or "", reverse=True)
+            problems = problems[:50]
+
+            # ── Project disk size (exclude venv, pycache, git, node_modules) ──
+            project_path = Path(__file__).resolve().parent.parent
+            project_size_bytes = 0
+            for fpath in project_path.rglob('*'):
+                if any(part.startswith('.') or part in ('.venv', '__pycache__', 'node_modules') for part in fpath.parts):
+                    continue
+                if fpath.is_file():
+                    try:
+                        project_size_bytes += fpath.stat().st_size
+                    except OSError:
+                        pass
+            mem_info = proc.memory_info()
+
+            self._send_json(200, {
+                "resources": {
+                    "cpu_percent": proc.cpu_percent(interval=0.3),
+                    "cpu_count": psutil.cpu_count(),
+                    "memory_mb": round(mem_info.rss / 1048576, 1),
+                    "memory_percent": round(proc.memory_percent(), 1),
+                    "disk_mb": round(project_size_bytes / 1048576, 1),
+                    "uptime_seconds": int(time.time() - proc.create_time()),
+                    "threads": proc.num_threads(),
+                    "open_files": proc.num_fds() if hasattr(proc, 'num_fds') else (proc.num_handles() if hasattr(proc, 'num_handles') else 0),
+                    "connections": len(proc.net_connections()),
+                    "python_version": os.sys.version.split()[0],
+                },
+                "problems": problems,
+            })
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
