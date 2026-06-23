@@ -6,14 +6,14 @@ from psycopg2 import pool
 
 from src.config.settings import NEON_DB_URL
 
-_connection_pool: pool.SimpleConnectionPool | None = None
+_connection_pool: pool.ThreadedConnectionPool | None = None
 
 
 def get_connection():
     global _connection_pool
     if _connection_pool is None:
         print(f"[DEBUG] db.get_connection: creating connection pool", flush=True)
-        _connection_pool = psycopg2.pool.SimpleConnectionPool(
+        _connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
             dsn=NEON_DB_URL,

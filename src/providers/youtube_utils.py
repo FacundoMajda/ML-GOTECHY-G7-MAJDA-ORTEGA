@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import yt_dlp
@@ -13,9 +14,19 @@ _FORMAT_CANDIDATES = [
 ]
 
 
+def _get_cookies_opts() -> dict:
+    cookies_file = Path("cookies.txt")
+    if cookies_file.exists():
+        print(f"[DEBUG] _get_cookies_opts: using cookiefile=cookies.txt", flush=True)
+        return {"cookiefile": str(cookies_file.resolve())}
+    print(f"[DEBUG] _get_cookies_opts: no cookies.txt found, will try without cookies", flush=True)
+    return {}
+
+
 def extract_youtube_info(url: str, *, download: bool = False) -> dict[str, Any]:
     print(f"[DEBUG] extract_youtube_info: ENTRY url={url[:80]}...", flush=True)
     last_error: Exception | None = None
+    cookies_opts = _get_cookies_opts()
 
     for fmt in _FORMAT_CANDIDATES:
         opts = {
@@ -25,6 +36,7 @@ def extract_youtube_info(url: str, *, download: bool = False) -> dict[str, Any]:
             "noplaylist": True,
             "youtube_include_dash_manifest": True,
         }
+        opts.update(cookies_opts)
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=download)

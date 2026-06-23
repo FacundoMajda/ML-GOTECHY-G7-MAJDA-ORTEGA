@@ -438,6 +438,15 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
+        # API — analytics
+        if path == "/api/analytics/occupancy-trends":
+            self._api_occupancy_trends()
+            return
+
+        if path == "/api/analytics/dwell-times":
+            self._api_dwell_times()
+            return
+
         # API — job status
         if path == "/api/job/status":
             self._api_job_status()
@@ -618,6 +627,30 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(path.stat().st_size))
         self.end_headers()
         self.wfile.write(path.read_bytes())
+
+    # ── Analytics API ──────────────────────────────────────────────────────────
+
+    def _api_occupancy_trends(self) -> None:
+        """GET /api/analytics/occupancy-trends"""
+        print(f"[DEBUG] AppHandler._api_occupancy_trends: ENTRY", flush=True)
+        try:
+            data = _session_repo.get_occupancy_trends()
+            self._send_json(200, data)
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._api_occupancy_trends: EXCEPTION {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_dwell_times(self) -> None:
+        """GET /api/analytics/dwell-times"""
+        print(f"[DEBUG] AppHandler._api_dwell_times: ENTRY", flush=True)
+        try:
+            data = _session_repo.get_dwell_times()
+            self._send_json(200, data)
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._api_dwell_times: EXCEPTION {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
 
     # ── New API endpoints ────────────────────────────────────────────────────
 

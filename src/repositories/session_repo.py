@@ -217,3 +217,60 @@ class SessionRepository:
         }
         print(f"[DEBUG] SessionRepository.get_by_id: returning {result}", flush=True)
         return result
+
+    def get_occupancy_trends(self) -> list[dict]:
+        print(f"[DEBUG] SessionRepository.get_occupancy_trends: ENTRY", flush=True)
+        rows = execute_query(
+            """
+            SELECT
+                date_trunc('hour', captured_at) AS hour,
+                AVG(count_inside)::int AS avg_occupancy,
+                MAX(count_inside) AS peak_occupancy
+            FROM roi_occupancy_snapshot
+            WHERE captured_at >= NOW() - INTERVAL '24 hours'
+            GROUP BY date_trunc('hour', captured_at)
+            ORDER BY hour
+            """,
+            fetch="all",
+        )
+        result = [
+            {
+                "hour": row[0].isoformat() if row[0] else row[0],
+                "avg_occupancy": int(row[1]) if row[1] is not None else 0,
+                "peak_occupancy": int(row[2]) if row[2] is not None else 0,
+            }
+            for row in rows
+        ]
+        print(f"[DEBUG] SessionRepository.get_occupancy_trends: returning {len(result)} buckets", flush=True)
+        return result
+
+    def get_dwell_times(self) -> list[dict]:
+        print(f"[DEBUG] SessionRepository.get_dwell_times: ENTRY", flush=True)
+        rows = execute_query(
+            """
+            SELECT
+                ze.roi_id,
+                r.name AS roi_name,
+                AVG(ze.dwell_seconds)::numeric(10,2) AS avg_dwell_seconds,
+                MAX(ze.dwell_seconds)::numeric(10,2) AS max_dwell_seconds,
+                COUNT(*) AS exit_count
+            FROM zone_event ze
+            JOIN roi r ON ze.roi_id = r.id
+            WHERE ze.event_type = 'exit' AND ze.dwell_seconds IS NOT NULL
+            GROUP BY ze.roi_id, r.name
+            ORDER BY avg_dwell_seconds DESC
+            """,
+            fetch="all",
+        )
+        result = [
+            {
+                "roi_id": str(row[0]),
+                "roi_name": row[1],
+                "avg_dwell_seconds": float(row[2]) if row[2] is not None else 0,
+                "max_dwell_seconds": float(row[3]) if row[3] is not None else 0,
+                "exit_count": int(row[4]) if row[4] is not None else 0,
+            }
+            for row in rows
+        ]
+        print(f"[DEBUG] SessionRepository.get_dwell_times: returning {len(result)} zones", flush=True)
+        return result
