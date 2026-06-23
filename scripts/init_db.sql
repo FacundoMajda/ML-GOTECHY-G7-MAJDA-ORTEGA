@@ -33,6 +33,7 @@ CREATE TABLE roi (
     polygon         JSONB       NOT NULL,   -- [[x1,y1],[x2,y2],...]
     positive_label  TEXT        NOT NULL DEFAULT 'inside',
     negative_label  TEXT        NOT NULL DEFAULT 'outside',
+    observed_classes JSONB      NOT NULL DEFAULT '["person"]'::jsonb,  -- catálogo horizontal de clases a observar
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -45,12 +46,19 @@ CREATE TABLE roi_event_rule (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     roi_id          UUID        NOT NULL REFERENCES roi(id) ON DELETE CASCADE,
     event_type      TEXT        NOT NULL CHECK (event_type IN (
-                                    'entry',            -- alguien ingresa al ROI
-                                    'exit',             -- alguien sale del ROI
-                                    'overcapacity',     -- personas_dentro > threshold
-                                    'dwell_exceeded'    -- permanencia > threshold_seconds
+                                    -- catálogo horizontal
+                                    'entry', 'exit',
+                                    'overcapacity', 'dwell_exceeded',
+                                    'presence', 'occupancy_low',
+                                    'object_appeared', 'object_disappeared',
+                                    'object_count_exceeded', 'no_activity',
+                                    'density_high', 'class_ratio_exceeded',
+                                    'zone_inactive', 'forbidden_class_detected'
                                 )),
-    threshold       INTEGER,    -- para overcapacity: max personas; para dwell: segundos
+    threshold       INTEGER,    -- para overcapacity: max; para dwell: segundos
+    object_class    TEXT,       -- NULL = todas las clases observadas en el ROI
+    window_seconds  INTEGER,    -- ventana de evaluación para reglas temporales
+    enabled         BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -84,6 +92,7 @@ CREATE TABLE tracked_entity (
     last_seen_at        TIMESTAMPTZ NOT NULL,
     first_seen_frame    INTEGER,                -- NULL si realtime
     last_seen_frame     INTEGER,
+    object_class        TEXT        NOT NULL DEFAULT 'person',
     UNIQUE (session_id, track_id)
 );
 
@@ -101,6 +110,7 @@ CREATE TABLE roi_occupancy_snapshot (
     count_inside    INTEGER     NOT NULL DEFAULT 0,
     count_outside   INTEGER     NOT NULL DEFAULT 0,
     track_ids_inside INTEGER[]  NOT NULL DEFAULT '{}',
+    object_class_counts JSONB   NOT NULL DEFAULT '{}'::jsonb,
     CONSTRAINT uq_snapshot_per_frame UNIQUE (session_id, roi_id, frame_number)
 );
 
@@ -113,13 +123,20 @@ CREATE TABLE zone_event (
     session_id      UUID        NOT NULL REFERENCES detection_session(id) ON DELETE CASCADE,
     roi_id          UUID        NOT NULL REFERENCES roi(id),
     track_id        INTEGER,                    -- NULL para overcapacity
+    object_class    TEXT        NOT NULL DEFAULT 'person',
     event_type      TEXT        NOT NULL CHECK (event_type IN (
-                                    'entry', 'exit', 'overcapacity', 'dwell_exceeded'
+                                    'entry', 'exit', 'overcapacity', 'dwell_exceeded',
+                                    'presence', 'occupancy_low',
+                                    'object_appeared', 'object_disappeared',
+                                    'object_count_exceeded', 'no_activity',
+                                    'density_high', 'class_ratio_exceeded',
+                                    'zone_inactive', 'forbidden_class_detected'
                                 )),
     occurred_at     TIMESTAMPTZ NOT NULL,
     frame_number    INTEGER,
     dwell_seconds   NUMERIC(10,2),              -- solo para dwell_exceeded
-    metadata        JSONB                       -- datos extra según tipo de evento
+    metadata        JSONB,                      -- datos extra según tipo de evento
+    rule_id         UUID                        -- referencia a roi_event_rule
 );
 
 -- ============================================================

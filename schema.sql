@@ -25,6 +25,7 @@ CREATE TABLE "roi" (
 	"detect_occupancy" boolean DEFAULT true NOT NULL,
 	"detect_dwell" boolean DEFAULT false NOT NULL,
 	"alerts" jsonb DEFAULT '[]'::jsonb,
+	"observed_classes" jsonb DEFAULT '["person"]'::jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -33,8 +34,11 @@ CREATE TABLE "roi_event_rule" (
 	"roi_id" uuid NOT NULL,
 	"event_type" text NOT NULL,
 	"threshold" integer,
+	"object_class" text,
+	"window_seconds" integer,
+	"enabled" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "roi_event_rule_event_type_check" CHECK ((event_type = ANY (ARRAY['entry'::text, 'exit'::text, 'overcapacity'::text, 'dwell_exceeded'::text])))
+	CONSTRAINT "roi_event_rule_event_type_check" CHECK ((event_type = ANY (ARRAY['entry'::text, 'exit'::text, 'overcapacity'::text, 'dwell_exceeded'::text, 'presence'::text, 'occupancy_low'::text, 'object_appeared'::text, 'object_disappeared'::text, 'object_count_exceeded'::text, 'no_activity'::text, 'density_high'::text, 'class_ratio_exceeded'::text, 'zone_inactive'::text, 'forbidden_class_detected'::text])))
 );
 CREATE TABLE "roi_occupancy_snapshot" (
 	"id" bigserial PRIMARY KEY,
@@ -44,12 +48,14 @@ CREATE TABLE "roi_occupancy_snapshot" (
 	"frame_number" integer,
 	"count_inside" integer DEFAULT 0 NOT NULL,
 	"count_outside" integer DEFAULT 0 NOT NULL,
-	"track_ids_inside" integer[] DEFAULT '{}' NOT NULL
+	"track_ids_inside" integer[] DEFAULT '{}' NOT NULL,
+	"object_class_counts" jsonb DEFAULT '{}' NOT NULL
 );
 CREATE TABLE "tracked_entity" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-	"session_id" uuid NOT NULL UNIQUE,
-	"track_id" integer NOT NULL UNIQUE,
+	"session_id" uuid NOT NULL,
+	"track_id" integer NOT NULL,
+	"object_class" text DEFAULT 'person' NOT NULL,
 	"first_seen_at" timestamp with time zone NOT NULL,
 	"last_seen_at" timestamp with time zone NOT NULL,
 	"first_seen_frame" integer,
@@ -72,12 +78,14 @@ CREATE TABLE "zone_event" (
 	"session_id" uuid NOT NULL,
 	"roi_id" uuid NOT NULL,
 	"track_id" integer,
+	"object_class" text DEFAULT 'person' NOT NULL,
 	"event_type" text NOT NULL,
 	"occurred_at" timestamp with time zone NOT NULL,
 	"frame_number" integer,
 	"dwell_seconds" numeric(10, 2),
 	"metadata" jsonb,
-	CONSTRAINT "zone_event_event_type_check" CHECK ((event_type = ANY (ARRAY['entry'::text, 'exit'::text, 'overcapacity'::text, 'dwell_exceeded'::text])))
+	"rule_id" uuid,
+	CONSTRAINT "zone_event_event_type_check" CHECK ((event_type = ANY (ARRAY['entry'::text, 'exit'::text, 'overcapacity'::text, 'dwell_exceeded'::text, 'presence'::text, 'occupancy_low'::text, 'object_appeared'::text, 'object_disappeared'::text, 'object_count_exceeded'::text, 'no_activity'::text, 'density_high'::text, 'class_ratio_exceeded'::text, 'zone_inactive'::text, 'forbidden_class_detected'::text])))
 );
 CREATE UNIQUE INDEX "detection_session_pkey" ON "detection_session" ("id");
 CREATE INDEX "idx_session_source" ON "detection_session" ("video_source_id");

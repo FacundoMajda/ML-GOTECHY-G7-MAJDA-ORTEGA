@@ -37,6 +37,7 @@ class TrackedEntityRecord:
     last_seen_at: datetime
     first_seen_frame: Optional[int] = None
     last_seen_frame: Optional[int] = None
+    object_class: str = "person"
 
 
 @dataclass
@@ -47,6 +48,7 @@ class OccupancySnapshot:
     count_inside: int
     count_outside: int
     track_ids_inside: list[int]
+    object_class_counts: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -57,6 +59,7 @@ class ZoneEventRecord:
     track_id: Optional[int] = None
     frame_number: Optional[int] = None
     dwell_seconds: Optional[float] = None
+    object_class: str = "person"
     metadata: dict = field(default_factory=dict)
 
 

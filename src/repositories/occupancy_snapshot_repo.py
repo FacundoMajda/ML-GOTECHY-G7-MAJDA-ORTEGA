@@ -1,4 +1,5 @@
 # src/repositories/occupancy_snapshot_repo.py
+import json
 from uuid import UUID
 
 from src.models.contracts import OccupancySnapshot
@@ -12,15 +13,16 @@ class OccupancySnapshotRepository:
             return
         params_list = [
             (str(session_id), snap.roi_id, snap.captured_at,
-             snap.frame_number, snap.count_inside, snap.count_outside, snap.track_ids_inside)
+             snap.frame_number, snap.count_inside, snap.count_outside,
+             snap.track_ids_inside, json.dumps(snap.object_class_counts))
             for snap in snapshots
         ]
         print(f"[DEBUG] OccupancySnapshotRepository.create_batch: batch insert n={len(params_list)}", flush=True)
         execute_batch(
             """
             INSERT INTO roi_occupancy_snapshot
-            (session_id, roi_id, captured_at, frame_number, count_inside, count_outside, track_ids_inside)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (session_id, roi_id, captured_at, frame_number, count_inside, count_outside, track_ids_inside, object_class_counts)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (session_id, roi_id, frame_number) DO NOTHING
             """,
             params_list,

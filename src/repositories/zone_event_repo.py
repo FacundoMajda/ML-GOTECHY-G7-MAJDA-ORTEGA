@@ -13,7 +13,7 @@ class ZoneEventRepository:
             print("[DEBUG] ZoneEventRepository.create_batch: 0 events, skip", flush=True)
             return
         params_list = [
-            (str(uuid.uuid4()), str(session_id), ev.roi_id, ev.track_id,
+            (str(uuid.uuid4()), str(session_id), ev.roi_id, ev.track_id, ev.object_class,
              ev.event_type.value, ev.occurred_at, ev.frame_number,
              ev.dwell_seconds, json.dumps(ev.metadata))
             for ev in events
@@ -22,8 +22,8 @@ class ZoneEventRepository:
         execute_batch(
             """
             INSERT INTO zone_event
-            (id, session_id, roi_id, track_id, event_type, occurred_at, frame_number, dwell_seconds, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (id, session_id, roi_id, track_id, object_class, event_type, occurred_at, frame_number, dwell_seconds, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             params_list,
         )

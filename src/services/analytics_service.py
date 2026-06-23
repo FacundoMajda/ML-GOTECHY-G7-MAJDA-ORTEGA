@@ -1,6 +1,6 @@
 # src/services/analytics_service.py
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -29,6 +29,38 @@ from src.repositories.zone_event_repo import ZoneEventRepository
 from src.services.metrics_service import MetricsService
 
 
+# ── YOLO COCO class id → nombre semántico ────────────────────
+# Mapeo extendido del catálogo COCO que el modelo YOLO11n detecta.
+# Si un id no está acá, fallback a "class_<n>".
+_YOLO_ID_TO_CLASS: dict[int, str] = {
+    0: "person",
+    1: "bicycle",
+    2: "car",
+    3: "motorcycle",
+    5: "bus",
+    7: "truck",
+    15: "cat",
+    16: "dog",
+    24: "backpack",
+    26: "suitcase",
+    27: "umbrella",
+    28: "handbag",
+    39: "bottle",
+    41: "cup",
+    56: "chair",
+    57: "couch",
+    58: "potted_plant",
+    60: "dining_table",
+    62: "tv",
+    63: "laptop",
+    64: "mouse",
+    65: "remote",
+    66: "keyboard",
+    67: "cell_phone",
+    73: "book",
+}
+
+
 @dataclass
 class EntityState:
     track_id: int
@@ -36,8 +68,9 @@ class EntityState:
     last_seen_at: datetime
     first_seen_frame: int
     last_seen_frame: int
-    inside_rois: dict[str, bool]  # roi_id -> inside
-    roi_entry_started_at: dict[str, datetime]
+    object_class: str = "person"
+    inside_rois: dict[str, bool] = field(default_factory=dict)  # roi_id -> inside
+    roi_entry_started_at: dict[str, datetime] = field(default_factory=dict)
 
 
 class CounterEngine:
@@ -122,8 +155,9 @@ class CounterEngine:
         foot_left: tuple[float, float],
         foot_right: tuple[float, float],
         timestamp: datetime,
+        object_class: str = "person",
     ) -> None:
-        print(f"[DEBUG] CounterEngine.update: ENTRY frame_index={frame_index} track_id={track_id} foot_left=({foot_left[0]:.1f},{foot_left[1]:.1f}) foot_right=({foot_right[0]:.1f},{foot_right[1]:.1f})", flush=True)
+        print(f"[DEBUG] CounterEngine.update: ENTRY frame_index={frame_index} track_id={track_id} class={object_class} foot_left=({foot_left[0]:.1f},{foot_left[1]:.1f}) foot_right=({foot_right[0]:.1f},{foot_right[1]:.1f})", flush=True)
         self._frame_index = frame_index
         now = timestamp
 
@@ -135,10 +169,9 @@ class CounterEngine:
                 last_seen_at=now,
                 first_seen_frame=frame_index,
                 last_seen_frame=frame_index,
-                inside_rois={},
-                roi_entry_started_at={},
+                object_class=object_class,
             )
-            print(f"[DEBUG] CounterEngine.update: new entity_state for track_id={track_id}", flush=True)
+            print(f"[DEBUG] CounterEngine.update: new entity_state for track_id={track_id} class={object_class}", flush=True)
         else:
             state = self.entity_states[track_id]
             state.last_seen_at = now
@@ -160,9 +193,10 @@ class CounterEngine:
                         occurred_at=now,
                         track_id=track_id,
                         frame_number=frame_index,
+                        object_class=object_class,
                     )
                 )
-                print(f"[DEBUG] CounterEngine.update: ENTRY event roi={roi_id} track={track_id}", flush=True)
+                print(f"[DEBUG] CounterEngine.update: ENTRY event roi={roi_id} track={track_id} class={object_class}", flush=True)
             elif prev is True and not inside and roi.detect_exit:
                 self.zone_counts[roi_id]["exit"] += 1
                 self.zone_unique_tracks[roi_id]["exit"].add(track_id)
@@ -178,9 +212,10 @@ class CounterEngine:
                         track_id=track_id,
                         frame_number=frame_index,
                         dwell_seconds=dwell,
+                        object_class=object_class,
                     )
                 )
-                print(f"[DEBUG] CounterEngine.update: EXIT event roi={roi_id} track={track_id} dwell={dwell:.1f}s", flush=True)
+                print(f"[DEBUG] CounterEngine.update: EXIT event roi={roi_id} track={track_id} dwell={dwell:.1f}s class={object_class}", flush=True)
                 self.entity_states[track_id].roi_entry_started_at.pop(roi_id, None)
 
             self.zone_state[roi_id][track_id] = inside
@@ -199,6 +234,13 @@ class CounterEngine:
             inside_ids = [
                 tid for tid, inside in self.zone_state[roi_id].items() if inside
             ]
+            class_counts: dict[str, int] = {}
+            for tid in inside_ids:
+                state = self.entity_states.get(tid)
+                if state is None:
+                    continue
+                cls = state.object_class
+                class_counts[cls] = class_counts.get(cls, 0) + 1
             self.snapshots.append(
                 OccupancySnapshot(
                     roi_id=roi_id,
@@ -207,6 +249,7 @@ class CounterEngine:
                     count_inside=len(inside_ids),
                     count_outside=total_tracked - len(inside_ids),
                     track_ids_inside=inside_ids,
+                    object_class_counts=class_counts,
                 )
             )
         print(f"[DEBUG] CounterEngine._take_snapshot: added {len(self.roi_configs)} snapshots, total={len(self.snapshots)}", flush=True)
@@ -220,6 +263,7 @@ class CounterEngine:
                 last_seen_at=state.last_seen_at,
                 first_seen_frame=state.first_seen_frame,
                 last_seen_frame=state.last_seen_frame,
+                object_class=state.object_class,
             )
             for state in self.entity_states.values()
         ]
@@ -487,18 +531,23 @@ class AnalyticsService:
                 result = results[0]
                 boxes = None
                 ids = None
+                class_ids = None
                 if result.boxes is not None and result.boxes.id is not None:
                     boxes = result.boxes.xyxy.cpu().numpy()
                     ids = result.boxes.id.cpu().numpy().astype(int)
+                    if result.boxes.cls is not None:
+                        class_ids = result.boxes.cls.cpu().numpy().astype(int)
                     print(f"[DEBUG] AnalyticsService.process: YOLO tracking -> {len(boxes)} detections with ids", flush=True)
 
-                    for bbox, track_id in zip(boxes, ids):
+                    for det_idx, (bbox, track_id) in enumerate(zip(boxes, ids)):
                         x1, y1, x2, y2 = bbox
                         center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
                         foot_left = (x1, y2)
                         foot_right = (x2, y2)
                         ts = datetime.now() if timestamp_mode == TimestampMode.REALTIME else started_at
-                        engine.update(frame_index, int(track_id), center, foot_left, foot_right, ts)
+                        cls_id = int(class_ids[det_idx]) if class_ids is not None else 0
+                        object_class = _YOLO_ID_TO_CLASS.get(cls_id, f"class_{cls_id}")
+                        engine.update(frame_index, int(track_id), center, foot_left, foot_right, ts, object_class)
                     print(f"[DEBUG] AnalyticsService.process: after engine.update() total_events={len(engine.events)}", flush=True)
                 else:
                     print(f"[DEBUG] AnalyticsService.process: YOLO returned no tracked objects (boxes={result.boxes is not None}, ids={result.boxes is not None and result.boxes.id is not None})", flush=True)

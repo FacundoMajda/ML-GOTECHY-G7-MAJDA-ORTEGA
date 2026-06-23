@@ -1,3 +1,4 @@
+import statistics
 import uuid
 from typing import Optional
 from src.repositories.metric_snapshot_repo import MetricSnapshotRepository
@@ -21,52 +22,70 @@ class MetricsService:
         self.zone_event_repo = ZoneEventRepository()
 
     def compute(self, session_id: uuid.UUID) -> list:
-        """Compute MetricSnapshot for every ROI in a session.
+        """Compute MetricSnapshot for every (ROI, object_class) pair in a session.
 
-        Reads all ZoneEvents for the session, aggregates per ROI,
-        and persists the result as MetricSnapshot rows.
+        Reads all ZoneEvents for the session, aggregates per (roi, class),
+        and persists one MetricSnapshot row per (session, roi, class) tuple.
+        Multi-class: 1 ROI with 3 classes observadas → 3 rows.
         """
         zone_events = self.zone_event_repo.get_by_session(session_id)
 
-        # Aggregate per roi_id
-        roi_metrics: dict[uuid.UUID, dict] = {}
+        # Aggregate per (roi_id, object_class)
+        agg: dict[tuple[uuid.UUID, str], dict] = {}
         for ze in zone_events:
             roi_id = ze["roi_id"]
-            if roi_id not in roi_metrics:
-                roi_metrics[roi_id] = {
+            cls = ze.get("object_class") or "person"
+            key = (roi_id, cls)
+            if key not in agg:
+                agg[key] = {
                     "entries": 0,
                     "exits": 0,
                     "occupancy": 0,
                     "peak_occupancy": 0,
-                    "dwell_sum": 0.0,
-                    "dwell_count": 0,
+                    "dwell_values": [],
+                    "unique_tracks": set(),
                 }
 
-            m = roi_metrics[roi_id]
+            m = agg[key]
+            track_id = ze.get("track_id")
             if ze["event_type"] == "entry":
                 m["entries"] += 1
                 m["occupancy"] += 1
                 m["peak_occupancy"] = max(m["peak_occupancy"], m["occupancy"])
+                if track_id is not None:
+                    m["unique_tracks"].add(track_id)
             elif ze["event_type"] == "exit":
                 m["exits"] += 1
                 m["occupancy"] = max(0, m["occupancy"] - 1)
-            elif ze["event_type"] == "dwell" and ze.get("dwell_seconds"):
-                m["dwell_sum"] += ze["dwell_seconds"]
-                m["dwell_count"] += 1
+                if ze.get("dwell_seconds") is not None:
+                    m["dwell_values"].append(float(ze["dwell_seconds"]))
+                if track_id is not None:
+                    m["unique_tracks"].add(track_id)
 
-        # Persist
+        # Persist one row per (roi, class)
         results = []
-        for roi_id, m in roi_metrics.items():
-            avg_dwell = (m["dwell_sum"] / m["dwell_count"]) if m["dwell_count"] > 0 else None
+        for (roi_id, cls), m in agg.items():
+            avg_dwell = (sum(m["dwell_values"]) / len(m["dwell_values"])) if m["dwell_values"] else None
+            median_dwell = statistics.median(m["dwell_values"]) if m["dwell_values"] else None
             snap_id = self.snapshot_repo.save(
                 session_id=session_id,
                 roi_id=roi_id,
+                object_class=cls,
                 entries=m["entries"],
                 exits=m["exits"],
                 max_occupancy=m["peak_occupancy"],
                 avg_dwell_seconds=avg_dwell,
+                median_dwell_seconds=median_dwell,
+                unique_objects=len(m["unique_tracks"]),
             )
-            results.append({"id": snap_id, "roi_id": roi_id, **m})
+            results.append({
+                "id": snap_id, "roi_id": roi_id, "object_class": cls,
+                "entries": m["entries"], "exits": m["exits"],
+                "max_occupancy": m["peak_occupancy"],
+                "unique_objects": len(m["unique_tracks"]),
+                "avg_dwell_seconds": avg_dwell,
+                "median_dwell_seconds": median_dwell,
+            })
 
         return results
 

@@ -24,6 +24,7 @@ from src.providers.youtube_utils import extract_stream_url
 from src.repositories.db import execute_query
 from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
 from src.repositories.roi_repo import ROIRepository
+from src.repositories.class_catalog_repo import ObjectClassCatalogRepository
 from src.repositories.session_repo import SessionRepository
 from src.repositories.video_source_repo import VideoSourceRepository
 from src.repositories.zone_event_repo import ZoneEventRepository
@@ -41,6 +42,7 @@ _session_repo = SessionRepository()
 _roi_repo = ROIRepository()
 _snapshot_repo = OccupancySnapshotRepository()
 _zone_repo = ZoneEventRepository()
+_class_catalog = ObjectClassCatalogRepository()
 
 # ── Job progress (thread-safe) ─────────────────────────────────────────────
 _job_progress: dict = {}
@@ -248,6 +250,8 @@ ROUTES_GET = {
     "/api/analyses": "_api_analyses_list",
     re.compile(r"^/api/analyses/([^/]+)$"): "_api_analyses_detail",
     "/api/logs/data": "_api_logs_data",
+    "/api/classes": "_api_classes",
+    "/api/classes/grouped": "_api_classes_grouped",
 }
 
 ROUTES_POST = {
@@ -903,6 +907,24 @@ class AppHandler(BaseHTTPRequestHandler):
         self._send_json(200, updated)
 
     # ── Logs / Problems + Resources ───────────────────────────────────────
+
+    def _api_classes(self) -> None:
+        """GET /api/classes — full catalog (80 COCO classes, 12 categories)."""
+        try:
+            data = _class_catalog.list_all()
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_classes_grouped(self) -> None:
+        """GET /api/classes/grouped — {category: [{id, name}, ...]} for UI."""
+        try:
+            data = _class_catalog.list_grouped_by_category()
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
 
     def _api_logs_data(self) -> None:
         """GET /api/logs/data — system resources + problem events from DB."""
