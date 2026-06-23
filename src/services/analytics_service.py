@@ -24,6 +24,7 @@ from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
 from src.repositories.session_repo import SessionRepository
 from src.repositories.tracked_entity_repo import TrackedEntityRepository
 from src.repositories.zone_event_repo import ZoneEventRepository
+from src.services.metrics_service import MetricsService
 
 
 @dataclass
@@ -552,6 +553,12 @@ class AnalyticsService:
             session_id = self._persist_session(session_result)
             session_result.id = str(session_id)
             print(f"[DEBUG] AnalyticsService.process: persisted session_id={session_id}", flush=True)
+            # Compute derived metrics from ZoneEvents
+            try:
+                MetricsService().compute(session_id)
+                print(f"[DEBUG] AnalyticsService.process: MetricSnapshot computed for session_id={session_id}", flush=True)
+            except Exception as e:
+                print(f"[ERROR] AnalyticsService.process: MetricsService.compute failed: {e}", flush=True)
 
         print(f"[DEBUG] AnalyticsService.process: returning SessionResult id={session_result.id}", flush=True)
         return session_result

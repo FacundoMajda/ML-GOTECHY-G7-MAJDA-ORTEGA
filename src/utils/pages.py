@@ -111,10 +111,10 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <!-- TopAppBar -->
 <header class="bg-background border-b border-outline-variant fixed top-0 left-0 right-0 h-16 flex justify-between items-center px-margin-desktop z-50">
 <div class="flex items-center gap-8">
-<h1 class="text-headline-md font-headline-md font-bold text-primary cursor-pointer" onclick="switchTab('sources')">Argus Vision</h1>
+<h1 class="text-headline-md font-headline-md font-bold text-primary cursor-pointer" onclick="switchTab('dashboard')">Argus Vision</h1>
 <nav class="hidden md:flex gap-4">
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('sources')">Sources</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('jobs')">Jobs</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('fuentes')">Fuentes</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('historial')">Historial</a>
 </nav>
 </div>
 <div class="flex items-center gap-4">
@@ -132,17 +132,17 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <p class="text-body-sm font-body-sm text-on-surface-variant">V3.4.2-Stable</p>
 </div>
 <nav class="flex-1 py-4 overflow-y-auto">
-<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link active" data-tab="sources" onclick="switchTab('sources')">
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link active" data-tab="dashboard" onclick="switchTab('dashboard')">
 <span class="material-symbols-outlined" data-icon="videocam">videocam</span>
-<span class="text-label-caps font-label-caps">SOURCES</span>
+<span class="text-label-caps font-label-caps">DASHBOARD</span>
 </a>
-<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="jobs" onclick="switchTab('jobs')">
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="fuentes" onclick="switchTab('fuentes')">
 <span class="material-symbols-outlined" data-icon="monitoring">monitoring</span>
-<span class="text-label-caps font-label-caps">JOBS</span>
+<span class="text-label-caps font-label-caps">FUENTES</span>
 </a>
-<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="logs" onclick="switchTab('logs')">
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="historial" onclick="switchTab('historial')">
 <span class="material-symbols-outlined" data-icon="description">description</span>
-<span class="text-label-caps font-label-caps">SYSTEM LOGS</span>
+<span class="text-label-caps font-label-caps">HISTORIAL</span>
 </a>
 </nav>
 <div class="p-4 bg-surface-container-lowest border-t border-outline-variant mt-auto">
@@ -164,7 +164,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <!-- Main Content -->
 <main class="ml-64 mt-16 p-margin-desktop flex flex-col gap-gutter">
 
-<div id="tab-sources" class="tab-content">
+<div id="tab-fuentes" class="tab-content">
 <div class="flex justify-between items-end mb-4">
 <div>
 <nav class="flex text-body-sm font-body-sm text-on-surface-variant gap-2 mb-2"><span>Sources</span></nav>
@@ -211,40 +211,27 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </div>
 </div>
 
-<div id="tab-jobs" class="tab-content hidden">
+<div id="tab-dashboard" class="tab-content hidden">
 <div class="max-w-container-max mx-auto">
-<section class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+<section class="mb-8">
 <div>
-<h1 class="text-headline-lg font-headline-lg text-on-background">Operational Insights</h1>
-<p class="text-body-md font-body-md text-outline">System-wide performance and event telemetry for the current cycle.</p>
-</div>
-<div class="flex items-center gap-3 bg-surface-container p-1 rounded-lg">
-<div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-lowest border border-outline-variant rounded text-body-sm font-body-sm cursor-pointer">
-<span class="material-symbols-outlined text-primary" style="font-size: 18px;">calendar_today</span>
-<span id="current-date-label">Jun 22, 2026</span>
-<span class="material-symbols-outlined text-outline" style="font-size: 16px;">expand_more</span>
-</div>
-<button class="flex items-center gap-2 px-4 py-1.5 text-primary border border-primary rounded text-label-caps uppercase font-bold hover:bg-primary/5 transition-colors" onclick="exportReport()">
-<span class="material-symbols-outlined" style="font-size: 18px;">file_download</span> Export
-</button>
+<h1 class="text-headline-lg font-headline-lg text-on-background">Dashboard</h1>
+<p class="text-body-md font-body-md text-outline">Resumen de metricas de analisis.</p>
 </div>
 </section>
-
+<div id="dash-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+<div class="col-span-2 lg:col-span-4 text-center py-8 text-on-surface-variant"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm">Cargando...</p></div>
+</div>
 <div class="bento-grid mb-10">
-<div class="col-span-12 lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl p-6 relative overflow-hidden">
+<div class="col-span-12 lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
 <div class="flex justify-between items-start mb-6">
 <div>
-<h4 class="text-label-caps font-label-caps text-secondary uppercase">Hourly Occupancy Trends</h4>
-<p class="text-body-sm font-body-sm text-outline">Aggregate pedestrian density across all active sources.</p>
-</div>
-<div class="flex gap-2">
-<span class="w-3 h-3 rounded-full bg-primary"></span>
-<span class="text-body-sm font-body-sm text-on-surface">Live</span>
+<h4 class="text-label-caps font-label-caps text-secondary uppercase">Tendencias de Ocupacion</h4>
+<p class="text-body-sm font-body-sm text-outline">Densidad agregada por fuente.</p>
 </div>
 </div>
-<div class="h-64 w-full flex items-end gap-1 px-2 relative" id="occupancy-chart">
+<div class="h-48 w-full flex items-end gap-1 px-2 relative" id="occupancy-chart">
 <div class="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
-<div class="border-t border-outline h-px w-full"></div>
 <div class="border-t border-outline h-px w-full"></div>
 <div class="border-t border-outline h-px w-full"></div>
 <div class="border-t border-outline h-px w-full"></div>
@@ -252,182 +239,52 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div id="occupancy-bars" class="w-full h-full flex items-end gap-1"></div>
 </div>
 <div class="flex justify-between mt-4 px-2 text-label-caps font-label-caps text-outline uppercase">
-<span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>Now</span>
+<span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>Ahora</span>
 </div>
 </div>
 <div class="col-span-12 lg:col-span-4 bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-6">Avg. Dwell Time by Zone</h4>
+<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-6">Tiempo Promedio por Zona</h4>
 <div id="dwell-times-content" class="space-y-6">
-<div class="text-center py-8"><p class="text-body-sm font-body-sm text-on-surface-variant">No dwell time data yet</p></div>
+<div class="text-center py-8"><p class="text-body-sm font-body-sm text-on-surface-variant">Sin datos anah</p></div>
+</div>
+</div>
 </div>
 </div>
 </div>
 
-<section class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden mb-12">
-<div class="p-6 border-b border-outline-variant flex justify-between items-center">
+
+</div>
+
+<div id="tab-historial" class="tab-content hidden">
+<div class="max-w-container-max mx-auto">
+<section class="mb-8">
 <div>
-<h4 class="text-label-caps font-label-caps text-secondary uppercase">Recent Jobs</h4>
-<p class="text-body-sm font-body-sm text-outline">Processing queue history and report availability.</p>
+<h1 class="text-headline-lg font-headline-lg text-on-background">Historial de Analisis</h1>
+<p class="text-body-md font-body-md text-outline">Resultados de todos los analisis ejecutados.</p>
 </div>
-</div>
-<div id="jobs-error" class="hidden bg-error-container border border-error m-4 p-4 rounded-lg flex items-center gap-3">
-<span class="material-symbols-outlined text-error" data-icon="error">error</span>
-<span id="jobs-error-msg" class="flex-1 text-body-md font-body-md text-on-error-container"></span>
-<button class="text-label-caps font-label-caps text-on-error-container font-bold hover:underline" onclick="fetchSessions()">Retry</button>
-</div>
-<div id="jobs-content"></div>
 </section>
+<div id="analyses-error" class="hidden bg-error-container border border-error rounded-lg p-4 mb-4 flex items-center gap-3">
+<span class="material-symbols-outlined text-error" data-icon="error">error</span>
+<span id="analyses-error-msg" class="flex-1 text-body-md font-body-md text-on-error-container"></span>
+<button class="text-label-caps font-label-caps text-on-error-container font-bold hover:underline" onclick="fetchAnalyses()">Reintentar</button>
+</div>
+<div id="analyses-content">
+<div class="col-span-full text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Cargando...</p></div>
+</div>
 </div>
 </div>
 
+<div id="tab-analysis-detail" class="tab-content hidden">
+<div class="max-w-container-max mx-auto">
+<section class="mb-6 flex items-center gap-4">
+<button class="flex items-center gap-2 text-primary hover:underline text-body-sm font-body-sm" onclick="switchTab('historial')">
+<span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> Volver al historial
+</button>
+</section>
+<div id="analysis-detail-content"></div>
+</div>
 </div>
 
-<div id="tab-logs" class="tab-content hidden">
-<div class="flex justify-between items-end mb-8">
-<div>
-<h1 class="text-headline-lg font-headline-lg text-on-surface mb-2">Deployment Status</h1>
-<p class="text-body-md font-body-md text-on-surface-variant max-w-2xl">Infrastructure monitoring for cluster node node-cv-prod-01. Real-time telemetry across core modules and external services.</p>
-</div>
-<div class="flex gap-3">
-<button class="px-4 py-2 border border-primary text-primary text-body-sm font-bold rounded-lg hover:bg-primary-fixed-dim transition-colors" onclick="alert('Export coming soon')">Export Logs</button>
-<button class="px-4 py-2 bg-primary text-on-primary text-body-sm font-bold rounded-lg hover:opacity-90 transition-opacity" onclick="alert('Deploy coming soon')">Deploy Update</button>
-</div>
-</div>
-<div class="grid grid-cols-1 md:grid-cols-12 gap-6">
-<div class="md:col-span-4 bg-surface-container-lowest border border-outline-variant p-6 flex flex-col">
-<div class="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
-<h3 class="text-label-caps font-label-caps text-secondary uppercase">Module Status</h3>
-<div class="flex items-center gap-2">
-<div class="pulse-dot"></div>
-<span class="text-body-sm font-body-sm text-primary">All Systems Nominal</span>
-</div>
-</div>
-<div class="space-y-4">
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-outline">center_focus_strong</span>
-<span class="text-body-md font-body-md text-on-surface">Detection Engine</span>
-</div>
-<span class="bg-surface-container text-primary text-[10px] font-bold px-2 py-0.5 rounded uppercase">Completed</span>
-</div>
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-outline">polyline</span>
-<span class="text-body-md font-body-md text-on-surface">Tracking Service</span>
-</div>
-<span class="bg-surface-container text-primary text-[10px] font-bold px-2 py-0.5 rounded uppercase">Active</span>
-</div>
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-outline">account_tree</span>
-<span class="text-body-md font-body-md text-on-surface">State Manager</span>
-</div>
-<span class="bg-surface-container text-primary text-[10px] font-bold px-2 py-0.5 rounded uppercase">Active</span>
-</div>
-</div>
-</div>
-<div class="md:col-span-4 bg-surface-container-lowest border border-outline-variant p-6">
-<div class="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
-<h3 class="text-label-caps font-label-caps text-secondary uppercase">Resource Utilization</h3>
-<span class="text-data-mono font-data-mono text-outline">node-01</span>
-</div>
-<div class="space-y-6">
-<div>
-<div class="flex justify-between mb-2">
-<span class="text-body-sm font-body-sm text-on-surface">VRAM Usage</span>
-<span class="text-data-mono font-data-mono text-primary">6.4 / 12 GB</span>
-</div>
-<div class="w-full bg-surface-container-low h-1.5 rounded-full overflow-hidden">
-<div class="bg-primary h-full rounded-full" style="width: 53.3%"></div>
-</div>
-</div>
-<div>
-<div class="flex justify-between mb-2">
-<span class="text-body-sm font-body-sm text-on-surface">System Memory</span>
-<span class="text-data-mono font-data-mono text-primary">12.8 / 32 GB</span>
-</div>
-<div class="w-full bg-surface-container-low h-1.5 rounded-full overflow-hidden">
-<div class="bg-tertiary-container h-full rounded-full" style="width: 40%"></div>
-</div>
-</div>
-</div>
-</div>
-<div class="md:col-span-4 bg-surface-container-lowest border border-outline-variant p-6">
-<div class="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
-<h3 class="text-label-caps font-label-caps text-secondary uppercase">Neon DB Latency</h3>
-<span class="text-data-mono font-data-mono text-primary">24ms Avg</span>
-</div>
-<div class="h-24 flex items-end gap-1 px-1">
-<div class="flex-1 bg-surface-container-high h-[40%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[45%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[38%] rounded-t-sm"></div>
-<div class="flex-1 bg-primary h-[60%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[42%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[48%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[35%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[40%] rounded-t-sm"></div>
-<div class="flex-1 bg-primary h-[55%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[50%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[45%] rounded-t-sm"></div>
-<div class="flex-1 bg-surface-container-high h-[42%] rounded-t-sm"></div>
-</div>
-<div class="flex justify-between mt-2">
-<span class="text-[9px] font-label-caps text-outline uppercase">60m Ago</span>
-<span class="text-[9px] font-label-caps text-outline uppercase">Now</span>
-</div>
-</div>
-<div class="md:col-span-12 bg-surface-container-lowest border border-outline-variant">
-<div class="flex items-center justify-between px-6 py-4 border-b border-outline-variant bg-surface-container-low">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-outline">terminal</span>
-<h3 class="text-label-caps font-label-caps text-secondary uppercase">Live Container Logs</h3>
-</div>
-<div class="flex gap-4">
-<div class="flex items-center gap-1.5">
-<div class="w-2 h-2 rounded-full bg-primary"></div>
-<span class="text-[10px] font-label-caps text-on-surface-variant uppercase">Stream Stable</span>
-</div>
-<button class="text-[10px] font-label-caps text-primary uppercase hover:underline" onclick="clearLogs()">Clear Canvas</button>
-</div>
-</div>
-<div class="p-6 h-64 overflow-y-auto font-data-mono text-data-mono bg-surface-container-lowest scrollbar-hide" id="log-container">
-<div class="space-y-1" id="log-content">
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:01]</span> INFO: Initializing Argus-V3 Engine...</p>
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:03]</span> INFO: CUDA device [0] recognized: NVIDIA A100-SXM4-40GB</p>
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:04]</span> SUCCESS: Loaded YOLOv8-Detection weights</p>
-<p class="text-primary"><span class="text-secondary">[2024-11-24 14:22:05]</span> EVENT: Stream "Peatonal Tokyo" handshake completed (1080p@30fps)</p>
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:06]</span> DEBUG: Latency overhead: 14.2ms</p>
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:10]</span> INFO: Syncing state to Neon DB cluster... Done.</p>
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:15]</span> INFO: Heartbeat signal emitted to control-plane.</p>
-<p class="text-primary"><span class="text-secondary">[2024-11-24 14:22:18]</span> EVENT: Worker-Node-45 assigned 4 additional tracking jobs.</p>
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:20]</span> INFO: Memory optimization triggered. 450MB reclaimed.</p>
-<p class="text-on-error bg-error/10 px-1"><span class="text-secondary">[2024-11-24 14:22:25]</span> WARN: Frame dropped in source Peatonal Tokyo due to network congestion (1.2%).</p>
-<p class="text-outline"><span class="text-secondary">[2024-11-24 14:22:30]</span> INFO: System healthy. Waiting for input signal...</p>
-</div>
-</div>
-</div>
-</div>
-<footer class="mt-margin-desktop py-8 border-t border-outline-variant flex flex-col md:flex-row justify-between items-center gap-4">
-<div class="flex items-center gap-8">
-<div class="flex flex-col">
-<span class="text-[10px] font-label-caps text-outline uppercase mb-1">System Uptime</span>
-<span class="text-data-mono font-data-mono text-on-surface">14d 06h 22m 11s</span>
-</div>
-<div class="flex flex-col">
-<span class="text-[10px] font-label-caps text-outline uppercase mb-1">Primary IP</span>
-<span class="text-data-mono font-data-mono text-on-surface">192.168.1.144</span>
-</div>
-<div class="flex flex-col">
-<span class="text-[10px] font-label-caps text-outline uppercase mb-1">Status</span>
-<span class="text-data-mono font-data-mono text-primary flex items-center gap-1.5">
-<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
-ONLINE
-</span>
-</div>
-</div>
-<div class="text-body-sm font-body-sm text-outline">&copy; 2024 Argus Vision Infrastructure. All rights reserved.</div>
-</footer>
-</div>
 
 </main>
 
@@ -540,9 +397,9 @@ function switchTab(tab) {
     if (a.dataset.tab === tab) { a.classList.add('text-primary', 'font-bold', 'border-r-4', 'border-primary', 'bg-surface-container-high'); a.classList.remove('text-on-surface-variant'); }
     else { a.classList.remove('text-primary', 'font-bold', 'border-r-4', 'border-primary', 'bg-surface-container-high'); a.classList.add('text-on-surface-variant'); }
   });
-  if (tab === 'sources') fetchSources();
-  if (tab === 'jobs') { fetchSessions(); fetchOccupancyTrends(); fetchDwellTimes(); }
-  if (tab === 'logs') startLogSimulation(); else stopLogSimulation();
+  if (tab === 'fuentes') fetchSources();
+  if (tab === 'dashboard') { fetchDashboard(); fetchOccupancyTrends(); fetchDwellTimes(); }
+  if (tab === 'historial') fetchAnalyses();
 }
 
 function toggleAddSourceForm() {
@@ -1124,6 +981,73 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initial load
   fetchSources();
 });
+
+async function fetchDashboard() {
+  const dashCards = document.getElementById('dash-cards');
+  if (!dashCards) return;
+  try {
+    const res = await fetch('/api/dashboard');
+    const data = await res.json();
+    dashCards.innerHTML = '<div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Total Entradas</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.total_entries || 0) + '</p></div><div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Total Salidas</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.total_exits || 0) + '</p></div><div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Pico Ocupacion</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.sum_peak || 0) + '</p></div><div class="col-span-12 lg:col-span-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-6"><p class="text-label-caps font-label-caps text-secondary uppercase mb-2">Analisis Totales</p><p class="text-headline-lg font-headline-lg text-primary">' + (data.session_count || 0) + '</p></div>';
+  } catch (e) {
+    dashCards.innerHTML = '<div class="col-span-full text-center py-8 text-error">Error cargando dashboard</div>';
+  }
+}
+
+async function fetchAnalyses() {
+  const container = document.getElementById('analyses-content');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/analyses');
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      container.innerHTML = '<div class="col-span-full text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No hay analisis ainda.</p></div>';
+      return;
+    }
+    var rows = '';
+    for (var i = 0; i < data.length; i++) {
+      var s = data[i];
+      var started = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
+      var dur = s.duration_seconds ? (s.duration_seconds / 60).toFixed(1) + ' min' : '-';
+      var statusClass = (s.status === 'completed') ? 'bg-primary/10 text-primary' : 'bg-secondary/10 text-secondary';
+      rows += '<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors"><td class="p-4 text-body-sm font-body-sm">' + (s.source_name || '-') + '</td><td class="p-4 text-body-sm font-body-sm text-on-surface-variant">' + started + '</td><td class="p-4 text-body-sm font-body-sm text-on-surface-variant">' + dur + '</td><td class="p-4 text-body-sm font-body-sm"><span class="px-2 py-1 rounded text-label-caps text-xs font-bold ' + statusClass + '">' + (s.status || 'completed') + '</span></td><td class="p-4 text-body-sm font-body-sm"><button class="text-primary hover:underline text-label-caps" onclick="viewAnalysis(\'' + s.id + '\')">Ver</button></td></tr>';
+    }
+    container.innerHTML = '<table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-4">Fuente</th><th class="p-4">Fecha</th><th class="p-4">Duracion</th><th class="p-4">Estado</th><th class="p-4"></th></tr></thead><tbody>' + rows + '</tbody></table>';
+  } catch (e) {
+    var errMsg = document.getElementById('analyses-error-msg');
+    if (errMsg) errMsg.textContent = e.message;
+    var errDiv = document.getElementById('analyses-error');
+    if (errDiv) errDiv.classList.remove('hidden');
+    container.innerHTML = '';
+  }
+}
+
+async function viewAnalysis(id) {
+  try {
+    var res = await fetch('/api/analyses/' + id);
+    if (!res.ok) return;
+    var data = await res.json();
+    var metricsRows = '';
+    if (Array.isArray(data.metrics)) {
+      for (var m = 0; m < data.metrics.length; m++) {
+        var met = data.metrics[m];
+        var roiLabel = met.roi_id ? met.roi_id.substring(0, 8) + '...' : '-';
+        var dwellStr = met.avg_dwell_seconds ? met.avg_dwell_seconds.toFixed(1) + 's' : '-';
+        metricsRows += '<tr class="border-b border-outline-variant"><td class="p-3 text-body-sm">' + roiLabel + '</td><td class="p-3 text-body-sm text-center">' + (met.entries || 0) + '</td><td class="p-3 text-body-sm text-center">' + (met.exits || 0) + '</td><td class="p-3 text-body-sm text-center">' + (met.max_occupancy || 0) + '</td><td class="p-3 text-body-sm text-center">' + dwellStr + '</td></tr>';
+      }
+    }
+    var metricsTable = metricsRows ? '<table class="w-full text-left mb-6"><thead><tr class="border-b text-label-caps text-secondary uppercase"><th class="p-3">ROI</th><th class="p-3 text-center">Entradas</th><th class="p-3 text-center">Salidas</th><th class="p-3 text-center">Pico</th><th class="p-3 text-center">Dwell Avg</th></tr></thead><tbody>' + metricsRows + '</tbody></table>' : '<p class="text-body-sm text-on-surface-variant mb-6">Sin metricas disponibles.</p>';
+    var detailHtml = '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-6"><div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4"><div><p class="text-label-caps text-secondary uppercase">Fuente</p><p class="text-body-md font-body-md">' + (data.source_name || '-') + '</p></div><div><p class="text-label-caps text-secondary uppercase">Fecha</p><p class="text-body-md font-body-md">' + (data.started_at ? new Date(data.started_at).toLocaleString() : '-') + '</p></div><div><p class="text-label-caps text-secondary uppercase">Duracion</p><p class="text-body-md font-body-md">' + (data.duration_seconds ? (data.duration_seconds / 60).toFixed(1) + ' min' : '-') + '</p></div><div><p class="text-label-caps text-secondary uppercase">Estado</p><p class="text-body-md font-body-md">' + (data.status || 'completed') + '</p></div></div></div><h3 class="text-headline-md font-headline-md mb-4">Metricas por ROI</h3>' + metricsTable;
+    document.getElementById('analysis-detail-content').innerHTML = detailHtml;
+    document.getElementById('tab-historial').classList.add('hidden');
+    var detailTab = document.getElementById('tab-analysis-detail');
+    if (detailTab) detailTab.classList.remove('hidden');
+    state.tab = 'analysis-detail';
+  } catch (e) {
+    console.error('viewAnalysis error', e);
+  }
+}
+
 </script>
 </body>
 </html>"""

@@ -105,17 +105,36 @@ ALTER TABLE "tracked_entity" ADD CONSTRAINT "tracked_entity_session_id_fkey" FOR
 ALTER TABLE "zone_event" ADD CONSTRAINT "zone_event_roi_id_fkey" FOREIGN KEY ("roi_id") REFERENCES "roi"("id");
 ALTER TABLE "zone_event" ADD CONSTRAINT "zone_event_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "detection_session"("id") ON DELETE CASCADE;
 
--- Migrations for existing databases
 ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_entry BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_exit BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_occupancy BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE roi ADD COLUMN IF NOT EXISTS detect_dwell BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE roi ADD COLUMN IF NOT EXISTS alerts JSONB DEFAULT '[]'::jsonb;
 
--- Phase 5 schema sync: zone_event.rule_id FK, indexes, ON DELETE CASCADE
 ALTER TABLE zone_event ADD COLUMN IF NOT EXISTS rule_id UUID REFERENCES roi_event_rule(id);
 CREATE INDEX IF NOT EXISTS idx_zone_event_rule ON zone_event(rule_id);
 ALTER TABLE roi_occupancy_snapshot DROP CONSTRAINT IF EXISTS roi_occupancy_snapshot_roi_id_fkey;
 ALTER TABLE roi_occupancy_snapshot ADD CONSTRAINT roi_occupancy_snapshot_roi_id_fkey
     FOREIGN KEY (roi_id) REFERENCES roi(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_roi_event_rule_roi_type ON roi_event_rule (roi_id, event_type);
+
+-- ── AnalysisRun status ──────────────────────────────────────────────────────
+ALTER TABLE detection_session ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+
+-- ── MetricSnapshot: derived results per ROI per analysis run ───────────────-
+CREATE TABLE IF NOT EXISTS metric_snapshot (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "session_id" uuid NOT NULL,
+    "roi_id" uuid NOT NULL,
+    "entries" integer DEFAULT 0 NOT NULL,
+    "exits" integer DEFAULT 0 NOT NULL,
+    "max_occupancy" integer DEFAULT 0 NOT NULL,
+    "avg_dwell_seconds" numeric(10, 2),
+    "computed_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_metric_session ON metric_snapshot (session_id);
+CREATE INDEX IF NOT EXISTS idx_metric_roi ON metric_snapshot (roi_id);
+ALTER TABLE metric_snapshot ADD CONSTRAINT metric_snapshot_session_id_fkey
+    FOREIGN KEY (session_id) REFERENCES detection_session(id) ON DELETE CASCADE;
+ALTER TABLE metric_snapshot ADD CONSTRAINT metric_snapshot_roi_id_fkey
+    FOREIGN KEY (roi_id) REFERENCES roi(id) ON DELETE CASCADE;

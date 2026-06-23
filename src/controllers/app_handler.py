@@ -25,6 +25,7 @@ from src.repositories.session_repo import SessionRepository
 from src.repositories.video_source_repo import VideoSourceRepository
 from src.repositories.zone_event_repo import ZoneEventRepository
 from src.services.analytics_service import AnalyticsService
+from src.services.metrics_service import MetricsService
 from src.services.report_service import generate_report_html
 from src.utils.html_utils import render_home
 
@@ -102,8 +103,8 @@ def _run_analysis(
         print(f"[DEBUG] _run_analysis: after service.process() -> result.id={result.id}", flush=True)
 
         # Save report HTML to disk
-        print(f"[DEBUG] _run_analysis: calling generate_report_html(result)", flush=True)
-        report_html = generate_report_html(result)
+        print(f"[DEBUG] _run_analysis: calling generate_report_html(str(result.id))", flush=True)
+        report_html = generate_report_html(str(result.id))
         report_path = Path(REPORTS_DIR) / f"{result.id}.html"
         print(f"[DEBUG] _run_analysis: writing report to {report_path}", flush=True)
         report_path.write_text(report_html, encoding="utf-8")
@@ -221,6 +222,10 @@ ROUTES_GET = {
     "/api/analytics/occupancy-trends": "_api_occupancy_trends",
     "/api/analytics/dwell-times": "_api_dwell_times",
     "/api/job/status": "_api_job_status",
+    # New clean endpoints
+    "/api/dashboard": "_api_dashboard",
+    "/api/analyses": "_api_analyses_list",
+    re.compile(r"^/api/analyses/([^/]+)$"): "_api_analyses_detail",
 }
 
 ROUTES_POST = {
@@ -459,6 +464,73 @@ class AppHandler(BaseHTTPRequestHandler):
 
         print(f"[DEBUG] AppHandler._api_job_status: full status dict -> {status}", flush=True)
         self._send_json(200, status)
+
+
+    # -- New clean API - Dashboard / Analyses ---
+
+    def _api_dashboard(self) -> None:
+        print('[DEBUG] AppHandler._api_dashboard: ENTRY', flush=True)
+        try:
+            data = MetricsService().get_dashboard()
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_analyses_list(self) -> None:
+        print('[DEBUG] AppHandler._api_analyses_list: ENTRY', flush=True)
+        try:
+            sessions = _session_repo.list_all()
+            cleaned = [
+                {
+                    'id': s['id'],
+                    'source_name': s.get('source_name'),
+                    'source_type': s.get('source_type'),
+                    'started_at': s.get('started_at'),
+                    'ended_at': s.get('ended_at'),
+                    'duration_seconds': s.get('duration_seconds'),
+                    'status': s.get('status', 'completed'),
+                }
+                for s in sessions
+            ]
+            self._send_json(200, cleaned)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_analyses_detail(self, session_id: str) -> None:
+        print('[DEBUG] AppHandler._api_analyses_detail: ENTRY session_id=' + session_id, flush=True)
+        try:
+            session = _session_repo.get_by_id(session_id)
+            if not session:
+                self._send_json(404, {'error': 'Analysis not found'})
+                return
+            from src.repositories.metric_snapshot_repo import MetricSnapshotRepository
+            snaps = MetricSnapshotRepository().get_by_session(uuid.UUID(session_id))
+            cleaned_snaps = [
+                {
+                    'roi_id': str(s['roi_id']),
+                    'entries': s['entries'],
+                    'exits': s['exits'],
+                    'max_occupancy': s['max_occupancy'],
+                    'avg_dwell_seconds': s['avg_dwell_seconds'],
+                    'computed_at': str(s['computed_at']) if s.get('computed_at') else None,
+                }
+                for s in snaps
+            ]
+            self._send_json(200, {
+                'id': session['id'],
+                'source_name': session.get('source_name'),
+                'source_type': session.get('source_type'),
+                'started_at': session.get('started_at'),
+                'ended_at': session.get('ended_at'),
+                'duration_seconds': session.get('duration_seconds'),
+                'status': session.get('status', 'completed'),
+                'metrics': cleaned_snaps,
+            })
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
 
     # ── API handlers — POST ───────────────────────────────────────────────
 
@@ -825,3 +897,4 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         with file_path.open("rb") as fh:
             shutil.copyfileobj(fh, self.wfile)
+
