@@ -1,6 +1,7 @@
 # src/controllers/app_handler.py
 import json
 import mimetypes
+import re
 import shutil
 import threading
 import traceback
@@ -18,8 +19,11 @@ from src.config.settings import REPORTS_DIR, UPLOADS_DIR
 from src.models.contracts import ROIConfig, VideoSourceConfig
 from src.models.enums import SourceType
 from src.providers.youtube_utils import extract_stream_url
+from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
+from src.repositories.roi_repo import ROIRepository
 from src.repositories.session_repo import SessionRepository
 from src.repositories.video_source_repo import VideoSourceRepository
+from src.repositories.zone_event_repo import ZoneEventRepository
 from src.services.analytics_service import AnalyticsService
 from src.services.report_service import generate_report_html
 from src.utils.html_utils import render_home
@@ -30,6 +34,9 @@ UPLOADS_PATH = BASE_DIR / UPLOADS_DIR
 
 _repo = VideoSourceRepository()
 _session_repo = SessionRepository()
+_roi_repo = ROIRepository()
+_snapshot_repo = OccupancySnapshotRepository()
+_zone_repo = ZoneEventRepository()
 
 # ── Job progress (thread-safe) ─────────────────────────────────────────────
 _job_progress: dict = {}
@@ -62,8 +69,8 @@ def _run_analysis(
         print(f"[DEBUG] _run_analysis: after _repo.get_by_id -> config={config}", flush=True)
         if config is None:
             raise ValueError(f"Video source not found: {video_source_id}")
-        rois = _repo.get_rois_for_source(video_source_id)
-        print(f"[DEBUG] _run_analysis: after _repo.get_rois_for_source -> {len(rois)} rois", flush=True)
+        rois = _roi_repo.list_by_source(video_source_id)
+        print(f"[DEBUG] _run_analysis: after _roi_repo.list_by_source -> {len(rois)} rois", flush=True)
 
         service = AnalyticsService(config, rois, persist=True)
 
@@ -163,7 +170,8 @@ def _get_frame_dimensions(source_id: str) -> tuple[int, int]:
 def _load_video_sources() -> list[tuple[VideoSourceConfig, list[ROIConfig]]]:
     print(f"[DEBUG] _load_video_sources: ENTRY", flush=True)
     try:
-        result = _repo.get_all_with_rois()
+        sources = _repo.list_all()
+        result = [(src, _roi_repo.list_by_source(src.id)) for src in sources]
         print(f"[DEBUG] _load_video_sources: got {len(result)} sources, returning", flush=True)
         return result
     except Exception as exc:
@@ -203,8 +211,96 @@ def _source_to_dict(src: VideoSourceConfig, rois: list[ROIConfig]) -> dict:
     return result
 
 
+# ── Route tables ──────────────────────────────────────────────────────────────
+
+ROUTES_GET = {
+    "/api/sources": "_api_sources",
+    re.compile(r"^/api/sources/([^/]+)/preview$"): "_api_source_preview",
+    "/api/sessions": "_api_session_list",
+    re.compile(r"^/api/sessions/([^/]+)/report$"): "_api_session_report",
+    "/api/analytics/occupancy-trends": "_api_occupancy_trends",
+    "/api/analytics/dwell-times": "_api_dwell_times",
+    "/api/job/status": "_api_job_status",
+}
+
+ROUTES_POST = {
+    "/api/uploads": "_handle_upload_file",
+    "/api/sources": "_handle_create_source",
+    re.compile(r"^/api/sources/([^/]+)/rois$"): "_api_create_roi",
+    "/process": "_handle_process",
+}
+
+ROUTES_DELETE = {
+    re.compile(r"^/api/rois/([^/]+)$"): "_api_delete_roi",
+    re.compile(r"^/api/sources/([^/]+)$"): "_api_delete_source",
+}
+
+ROUTES_PUT = {
+    re.compile(r"^/api/rois/([^/]+)/config$"): "_api_update_roi_config",
+}
+
+
 class AppHandler(BaseHTTPRequestHandler):
-    # ── API ──────────────────────────────────────────────────────────────────
+    # ── Router ──────────────────────────────────────────────────────────────
+
+    def _route(self, method: str, path: str) -> None:
+        route_table = {"GET": ROUTES_GET, "POST": ROUTES_POST, "DELETE": ROUTES_DELETE, "PUT": ROUTES_PUT}
+        routes = route_table.get(method, {})
+        # Literal match first
+        handler_name = routes.get(path)
+        if handler_name:
+            getattr(self, handler_name)()
+            return
+        # Regex match
+        for pattern, handler_name in routes.items():
+            if isinstance(pattern, re.Pattern):
+                m = pattern.match(path)
+                if m:
+                    getattr(self, handler_name)(*m.groups())
+                    return
+        self.send_error(404)
+
+    # ── HTTP method handlers ───────────────────────────────────────────────
+
+    def do_GET(self) -> None:
+        print(f"[DEBUG] AppHandler.do_GET: path={self.path}", flush=True)
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/":
+            self._send_html(render_home())
+            return
+
+        if path.startswith("/files/"):
+            rel = path.removeprefix("/files/")
+            file_path = (BASE_DIR / rel).resolve()
+            if not str(file_path).startswith(str(BASE_DIR)):
+                self.send_error(403)
+                return
+            if not file_path.exists() or not file_path.is_file():
+                self.send_error(404)
+                return
+            self._send_file(file_path)
+            return
+
+        self._route("GET", path)
+
+    def do_POST(self) -> None:
+        print(f"[DEBUG] AppHandler.do_POST: path={self.path}", flush=True)
+        parsed = urlparse(self.path)
+        self._route("POST", parsed.path)
+
+    def do_DELETE(self) -> None:
+        print(f"[DEBUG] AppHandler.do_DELETE: path={self.path}", flush=True)
+        parsed = urlparse(self.path)
+        self._route("DELETE", parsed.path)
+
+    def do_PUT(self) -> None:
+        print(f"[DEBUG] AppHandler.do_PUT: path={self.path}", flush=True)
+        parsed = urlparse(self.path)
+        self._route("PUT", parsed.path)
+
+    # ── API handlers — GET ────────────────────────────────────────────────
 
     def _api_sources(self) -> None:
         """GET /api/sources"""
@@ -243,13 +339,14 @@ class AppHandler(BaseHTTPRequestHandler):
 
             # Resize para preview (max 640px de ancho)
             h, w = frame.shape[:2]
+            scale = 1.0
             if w > 640:
                 scale = 640 / w
                 new_w, new_h = int(w * scale), int(h * scale)
                 frame = cv2.resize(frame, (new_w, new_h))
 
             # ── Dibujar ROIs ──
-            rois = _repo.get_rois_for_source(source_id)
+            rois = _roi_repo.list_by_source(source_id)
             overlay = frame.copy()
             for roi in rois:
                 pts = np.array(roi.polygon, dtype=np.int32)
@@ -285,6 +382,85 @@ class AppHandler(BaseHTTPRequestHandler):
             print(f"[DEBUG] AppHandler._api_source_preview: EXCEPTION {e}", flush=True)
             traceback.print_exc()
             self._send_json(500, {"error": str(e)})
+
+    def _api_session_list(self) -> None:
+        """GET /api/sessions"""
+        print(f"[DEBUG] AppHandler._api_session_list: ENTRY", flush=True)
+        sessions = _session_repo.list_all()
+        print(f"[DEBUG] AppHandler._api_session_list: returning {len(sessions)} sessions", flush=True)
+        self._send_json(200, sessions)
+
+    def _api_session_report(self, session_id: str) -> None:
+        """GET /api/sessions/<id>/report"""
+        print(f"[DEBUG] AppHandler._api_session_report: ENTRY session_id={session_id}", flush=True)
+        path = Path(REPORTS_DIR) / f"{session_id}.html"
+        if not path.exists():
+            print(f"[DEBUG] AppHandler._api_session_report: report not found at {path}, 404", flush=True)
+            self._send_json(404, {"error": "Report not found"})
+            return
+        print(f"[DEBUG] AppHandler._api_session_report: sending report ({path.stat().st_size} bytes)", flush=True)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.end_headers()
+        self.wfile.write(path.read_bytes())
+
+    def _api_occupancy_trends(self) -> None:
+        """GET /api/analytics/occupancy-trends"""
+        print(f"[DEBUG] AppHandler._api_occupancy_trends: ENTRY", flush=True)
+        try:
+            data = _snapshot_repo.get_occupancy_trends()
+            self._send_json(200, data)
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._api_occupancy_trends: EXCEPTION {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_dwell_times(self) -> None:
+        """GET /api/analytics/dwell-times"""
+        print(f"[DEBUG] AppHandler._api_dwell_times: ENTRY", flush=True)
+        try:
+            data = _zone_repo.get_dwell_times()
+            self._send_json(200, data)
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._api_dwell_times: EXCEPTION {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_job_status(self) -> None:
+        """GET /api/job/status"""
+        print(f"[DEBUG] AppHandler._api_job_status: ENTRY", flush=True)
+        with _job_lock:
+            status = dict(_job_progress)
+
+        if not status:
+            status = {
+                "running": False,
+                "progress": 0.0,
+                "frames_done": 0,
+                "total_frames": None,
+                "seconds_done": 0.0,
+                "total_seconds": None,
+                "error": None,
+                "timestamp": datetime.now().isoformat(),
+                "message": "No job running",
+            }
+
+        # Ensure all expected keys are present
+        status.setdefault("running", False)
+        status.setdefault("progress", 0.0)
+        status.setdefault("frames_done", 0)
+        status.setdefault("total_frames", None)
+        status.setdefault("seconds_done", 0.0)
+        status.setdefault("total_seconds", None)
+        status.setdefault("error", None)
+        status.setdefault("timestamp", datetime.now().isoformat())
+        status.setdefault("message", "")
+
+        print(f"[DEBUG] AppHandler._api_job_status: full status dict -> {status}", flush=True)
+        self._send_json(200, status)
+
+    # ── API handlers — POST ───────────────────────────────────────────────
 
     def _handle_upload_file(self) -> None:
         """POST /api/uploads - multipart/form-data with field 'file'."""
@@ -389,136 +565,6 @@ class AppHandler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send_json(400, {"error": str(e)})
 
-    def _send_json(self, status: int, data) -> None:
-        print(f"[DEBUG] AppHandler._send_json: status={status} data_preview={str(data)[:200]}", flush=True)
-        body = json.dumps(data).encode("utf-8")
-        try:
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            print(f"[DEBUG] AppHandler._send_json: sent {len(body)} bytes", flush=True)
-        except (ConnectionAbortedError, BrokenPipeError) as e:
-            print(f"[DEBUG] AppHandler._send_json: client disconnected: {e}", flush=True)
-            pass  # cliente desconectado, no podemos hacer nada
-
-    # ── HTTP ────────────────────────────────────────────────────────────────
-
-    def do_GET(self) -> None:
-        print(f"[DEBUG] AppHandler.do_GET: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        # API — sources
-        if path == "/api/sources":
-            self._api_sources()
-            return
-
-        if path.startswith("/api/sources/"):
-            parts = path.removeprefix("/api/sources/").split("/", 1)
-            source_id = parts[0]
-            if len(parts) == 2 and parts[1] == "preview":
-                self._api_source_preview(source_id)
-                return
-            self.send_error(404)
-            return
-
-        # API — sessions
-        if path == "/api/sessions":
-            self._api_session_list()
-            return
-
-        if path.startswith("/api/sessions/"):
-            parts = path.removeprefix("/api/sessions/").split("/", 1)
-            session_id = parts[0]
-            if len(parts) == 2 and parts[1] == "report":
-                self._api_session_report(session_id)
-                return
-            self.send_error(404)
-            return
-
-        # API — analytics
-        if path == "/api/analytics/occupancy-trends":
-            self._api_occupancy_trends()
-            return
-
-        if path == "/api/analytics/dwell-times":
-            self._api_dwell_times()
-            return
-
-        # API — job status
-        if path == "/api/job/status":
-            self._api_job_status()
-            return
-
-        # Pages
-        if path == "/":
-            self._send_html(render_home())
-            return
-
-        if path.startswith("/files/"):
-            rel = path.removeprefix("/files/")
-            file_path = (BASE_DIR / rel).resolve()
-            if not str(file_path).startswith(str(BASE_DIR)):
-                self.send_error(403)
-                return
-            if not file_path.exists() or not file_path.is_file():
-                self.send_error(404)
-                return
-            self._send_file(file_path)
-            return
-
-        self.send_error(404)
-
-    def do_DELETE(self) -> None:
-        print(f"[DEBUG] AppHandler.do_DELETE: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        if path.startswith("/api/rois/"):
-            roi_id = path.removeprefix("/api/rois/")
-            self._api_delete_roi(roi_id)
-            return
-
-        if path.startswith("/api/sources/"):
-            source_id = path.removeprefix("/api/sources/")
-            self._api_delete_source(source_id)
-            return
-
-        self.send_error(404)
-
-    def do_PUT(self) -> None:
-        print(f"[DEBUG] AppHandler.do_PUT: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        if path.startswith("/api/rois/") and path.endswith("/config"):
-            roi_id = path.removeprefix("/api/rois/").removesuffix("/config")
-            self._api_update_roi_config(roi_id)
-            return
-
-        self.send_error(404)
-
-    def do_POST(self) -> None:
-        print(f"[DEBUG] AppHandler.do_POST: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-        if path == "/api/uploads":
-            self._handle_upload_file()
-        elif path == "/api/sources":
-            self._handle_create_source()
-        elif path == "/process":
-            self._handle_process()
-        elif path.startswith("/api/sources/"):
-            parts = path.removeprefix("/api/sources/").split("/", 1)
-            if len(parts) == 2 and parts[1] == "rois":
-                self._api_create_roi(parts[0])
-                return
-            self.send_error(404)
-        else:
-            self.send_error(404)
-
     def _handle_process(self) -> None:
         print(f"[DEBUG] AppHandler._handle_process: ENTRY", flush=True)
         length = int(self.headers.get("Content-Length", "0"))
@@ -606,54 +652,6 @@ class AppHandler(BaseHTTPRequestHandler):
 
         self._send_json(200, {"status": "started"})
 
-    def _api_session_list(self) -> None:
-        """GET /api/sessions"""
-        print(f"[DEBUG] AppHandler._api_session_list: ENTRY", flush=True)
-        sessions = _session_repo.list_all()
-        print(f"[DEBUG] AppHandler._api_session_list: returning {len(sessions)} sessions", flush=True)
-        self._send_json(200, sessions)
-
-    def _api_session_report(self, session_id: str) -> None:
-        """GET /api/sessions/<id>/report"""
-        print(f"[DEBUG] AppHandler._api_session_report: ENTRY session_id={session_id}", flush=True)
-        path = Path(REPORTS_DIR) / f"{session_id}.html"
-        if not path.exists():
-            print(f"[DEBUG] AppHandler._api_session_report: report not found at {path}, 404", flush=True)
-            self._send_json(404, {"error": "Report not found"})
-            return
-        print(f"[DEBUG] AppHandler._api_session_report: sending report ({path.stat().st_size} bytes)", flush=True)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(path.stat().st_size))
-        self.end_headers()
-        self.wfile.write(path.read_bytes())
-
-    # ── Analytics API ──────────────────────────────────────────────────────────
-
-    def _api_occupancy_trends(self) -> None:
-        """GET /api/analytics/occupancy-trends"""
-        print(f"[DEBUG] AppHandler._api_occupancy_trends: ENTRY", flush=True)
-        try:
-            data = _session_repo.get_occupancy_trends()
-            self._send_json(200, data)
-        except Exception as e:
-            print(f"[DEBUG] AppHandler._api_occupancy_trends: EXCEPTION {e}", flush=True)
-            traceback.print_exc()
-            self._send_json(500, {"error": str(e)})
-
-    def _api_dwell_times(self) -> None:
-        """GET /api/analytics/dwell-times"""
-        print(f"[DEBUG] AppHandler._api_dwell_times: ENTRY", flush=True)
-        try:
-            data = _session_repo.get_dwell_times()
-            self._send_json(200, data)
-        except Exception as e:
-            print(f"[DEBUG] AppHandler._api_dwell_times: EXCEPTION {e}", flush=True)
-            traceback.print_exc()
-            self._send_json(500, {"error": str(e)})
-
-    # ── New API endpoints ────────────────────────────────────────────────────
-
     def _api_create_roi(self, source_id: str) -> None:
         """POST /api/sources/<id>/rois"""
         print(f"[DEBUG] AppHandler._api_create_roi: ENTRY source_id={source_id}", flush=True)
@@ -688,7 +686,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
         roi_id = str(uuid.uuid4())
         roi = ROIConfig(id=roi_id, name=name, polygon=polygon)
-        _repo.create_roi(roi, source_id)
+        _roi_repo.create(roi, source_id)
 
         print(f"[DEBUG] AppHandler._api_create_roi: created roi {roi_id}", flush=True)
         self._send_json(201, {
@@ -704,16 +702,18 @@ class AppHandler(BaseHTTPRequestHandler):
             "alerts": roi.alerts,
         })
 
+    # ── API handlers — DELETE ─────────────────────────────────────────────
+
     def _api_delete_roi(self, roi_id: str) -> None:
         """DELETE /api/rois/<id>"""
         print(f"[DEBUG] AppHandler._api_delete_roi: ENTRY roi_id={roi_id}", flush=True)
-        existing = _repo.get_roi_by_id(roi_id)
+        existing = _roi_repo.get_by_id(roi_id)
         if existing is None:
             print(f"[DEBUG] AppHandler._api_delete_roi: roi not found, 404", flush=True)
             self._send_json(404, {"error": "ROI not found"})
             return
 
-        _repo.delete_roi(roi_id)
+        _roi_repo.delete(roi_id)
         print(f"[DEBUG] AppHandler._api_delete_roi: deleted roi {roi_id}, 204", flush=True)
         self.send_response(204)
         self.send_header("Content-Length", "0")
@@ -734,10 +734,12 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # ── API handlers — PUT ────────────────────────────────────────────────
+
     def _api_update_roi_config(self, roi_id: str) -> None:
         """PUT /api/rois/<id>/config"""
         print(f"[DEBUG] AppHandler._api_update_roi_config: ENTRY roi_id={roi_id}", flush=True)
-        existing = _repo.get_roi_by_id(roi_id)
+        existing = _roi_repo.get_by_id(roi_id)
         if existing is None:
             print(f"[DEBUG] AppHandler._api_update_roi_config: roi not found, 404", flush=True)
             self._send_json(404, {"error": "ROI not found"})
@@ -747,45 +749,28 @@ class AppHandler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length)) if length else {}
         print(f"[DEBUG] AppHandler._api_update_roi_config: body={body}", flush=True)
 
-        _repo.update_roi_config(roi_id, body)
+        _roi_repo.update_config(roi_id, body)
 
         # Return updated fields
-        updated = _repo.get_roi_by_id(roi_id)
+        updated = _roi_repo.get_by_id(roi_id)
         print(f"[DEBUG] AppHandler._api_update_roi_config: returning updated={updated}", flush=True)
         self._send_json(200, updated)
 
-    def _api_job_status(self) -> None:
-        """GET /api/job/status"""
-        print(f"[DEBUG] AppHandler._api_job_status: ENTRY", flush=True)
-        with _job_lock:
-            status = dict(_job_progress)
+    # ── Helpers ────────────────────────────────────────────────────────────
 
-        if not status:
-            status = {
-                "running": False,
-                "progress": 0.0,
-                "frames_done": 0,
-                "total_frames": None,
-                "seconds_done": 0.0,
-                "total_seconds": None,
-                "error": None,
-                "timestamp": datetime.now().isoformat(),
-                "message": "No job running",
-            }
-
-        # Ensure all expected keys are present
-        status.setdefault("running", False)
-        status.setdefault("progress", 0.0)
-        status.setdefault("frames_done", 0)
-        status.setdefault("total_frames", None)
-        status.setdefault("seconds_done", 0.0)
-        status.setdefault("total_seconds", None)
-        status.setdefault("error", None)
-        status.setdefault("timestamp", datetime.now().isoformat())
-        status.setdefault("message", "")
-
-        print(f"[DEBUG] AppHandler._api_job_status: full status dict -> {status}", flush=True)
-        self._send_json(200, status)
+    def _send_json(self, status: int, data) -> None:
+        print(f"[DEBUG] AppHandler._send_json: status={status} data_preview={str(data)[:200]}", flush=True)
+        body = json.dumps(data).encode("utf-8")
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            print(f"[DEBUG] AppHandler._send_json: sent {len(body)} bytes", flush=True)
+        except (ConnectionAbortedError, BrokenPipeError) as e:
+            print(f"[DEBUG] AppHandler._send_json: client disconnected: {e}", flush=True)
+            pass  # cliente desconectado, no podemos hacer nada
 
     def log_message(self, format: str, *args) -> None:
         return

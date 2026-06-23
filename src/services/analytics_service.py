@@ -20,7 +20,10 @@ from src.models.contracts import (
 from src.models.enums import EventType
 from src.providers.base import FrameProvider
 from src.providers.factory import VideoSourceFactory
+from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
 from src.repositories.session_repo import SessionRepository
+from src.repositories.tracked_entity_repo import TrackedEntityRepository
+from src.repositories.zone_event_repo import ZoneEventRepository
 
 
 @dataclass
@@ -395,12 +398,25 @@ class AnalyticsService:
         config: VideoSourceConfig,
         roi_configs: list[ROIConfig],
         persist: bool = False,
+        session_repo: Optional[SessionRepository] = None,
+        entity_repo: Optional[TrackedEntityRepository] = None,
+        snapshot_repo: Optional[OccupancySnapshotRepository] = None,
+        zone_repo: Optional[ZoneEventRepository] = None,
     ):
         self.config = config
         self.roi_configs = roi_configs
         self.provider: FrameProvider = VideoSourceFactory.create(config)
         self.persist = persist
-        self._session_repo = SessionRepository() if persist else None
+        if persist:
+            self._session_repo = session_repo or SessionRepository()
+            self._entity_repo = entity_repo or TrackedEntityRepository()
+            self._snapshot_repo = snapshot_repo or OccupancySnapshotRepository()
+            self._zone_repo = zone_repo or ZoneEventRepository()
+        else:
+            self._session_repo = None
+            self._entity_repo = None
+            self._snapshot_repo = None
+            self._zone_repo = None
 
     def process(
         self,
@@ -419,9 +435,7 @@ class AnalyticsService:
         writer = None
 
         OUTPUT_PATH = Path(OUTPUT_DIR)
-        OUTPUT_PATH.mkdir(exist_ok=True)
         REPORTS_PATH = Path(REPORTS_DIR)
-        REPORTS_PATH.mkdir(exist_ok=True)
 
         started_at = datetime.now()
         frame_index = 0
@@ -535,9 +549,19 @@ class AnalyticsService:
         print(f"[DEBUG] AnalyticsService.process: SessionResult created id={session_result.id}", flush=True)
 
         if self.persist and self._session_repo:
-            session_id = self._session_repo.save_session_result(session_result)
+            session_id = self._persist_session(session_result)
             session_result.id = str(session_id)
             print(f"[DEBUG] AnalyticsService.process: persisted session_id={session_id}", flush=True)
 
         print(f"[DEBUG] AnalyticsService.process: returning SessionResult id={session_result.id}", flush=True)
         return session_result
+
+    def _persist_session(self, session_result: SessionResult) -> UUID:
+        print(f"[DEBUG] AnalyticsService._persist_session: ENTRY", flush=True)
+        session_id = self._session_repo.create_session(session_result)
+        self._entity_repo.save_all(session_id, session_result.tracked_entities)
+        for snap in session_result.occupancy_snapshots:
+            self._snapshot_repo.create(session_id, snap)
+        for ev in session_result.zone_events:
+            self._zone_repo.create(session_id, ev)
+        return session_id
