@@ -65,6 +65,7 @@ class VideoSourceRepository:
 
     def delete(self, video_id: str) -> None:
         print(f"[DEBUG] VideoSourceRepository.delete: ENTRY video_id={video_id}", flush=True)
+        execute_query("DELETE FROM detection_session WHERE video_source_id = %s", (video_id,), fetch=None)
         execute_query("DELETE FROM video_source WHERE id = %s", (video_id,), fetch=None)
         print(f"[DEBUG] VideoSourceRepository.delete: done", flush=True)
 

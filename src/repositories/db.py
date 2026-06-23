@@ -38,11 +38,18 @@ def execute_query(query: str, params: tuple | None = None, fetch: str = "all"):
         with conn.cursor() as cur:
             cur.execute(query, params)
             conn.commit()
+            has_result_set = cur.description is not None
             if fetch == "one":
+                if not has_result_set:
+                    print(f"[DEBUG] db.execute_query: fetch=one but query returned no result set", flush=True)
+                    return None
                 result = cur.fetchone()
                 print(f"[DEBUG] db.execute_query: fetch=one result={result}", flush=True)
                 return result
             elif fetch == "all":
+                if not has_result_set:
+                    print(f"[DEBUG] db.execute_query: fetch=all but query returned no result set", flush=True)
+                    return []
                 result = cur.fetchall()
                 print(f"[DEBUG] db.execute_query: fetch=all rows={len(result) if result else 0}", flush=True)
                 return result

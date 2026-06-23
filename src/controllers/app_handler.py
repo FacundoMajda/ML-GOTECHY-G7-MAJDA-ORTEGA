@@ -1,5 +1,6 @@
 # src/controllers/app_handler.py
 import json
+import mimetypes
 import shutil
 import threading
 import traceback
@@ -52,10 +53,10 @@ def _run_analysis(
     output_video: bool,
     tracking_classes: list[int] | None,
     frame_skip: int,
-    max_frames: int | None,
+    max_seconds: int | None,
 ) -> None:
     """Run analysis in background thread, updating _job_progress."""
-    print(f"[DEBUG] _run_analysis: ENTRY video_source_id={video_source_id} output_video={output_video} tracking_classes={tracking_classes} frame_skip={frame_skip} max_frames={max_frames}", flush=True)
+    print(f"[DEBUG] _run_analysis: ENTRY video_source_id={video_source_id} output_video={output_video} tracking_classes={tracking_classes} frame_skip={frame_skip} max_seconds={max_seconds}", flush=True)
     try:
         config = _repo.get_by_id(video_source_id)
         print(f"[DEBUG] _run_analysis: after _repo.get_by_id -> config={config}", flush=True)
@@ -66,14 +67,21 @@ def _run_analysis(
 
         service = AnalyticsService(config, rois, persist=True)
 
-        def _progress_callback(frames_done: int, total_frames: int) -> None:
-            print(f"[DEBUG] _progress_callback: frames_done={frames_done} total_frames={total_frames}", flush=True)
+        def _progress_callback(frames_done: int, total_frames: int | None, seconds_done: float, total_seconds: float | None) -> None:
+            print(f"[DEBUG] _progress_callback: frames_done={frames_done} total_frames={total_frames} seconds_done={seconds_done} total_seconds={total_seconds}", flush=True)
             with _job_lock:
                 _job_progress["frames_done"] = frames_done
                 _job_progress["total_frames"] = total_frames
-                if total_frames and total_frames > 0:
+                _job_progress["seconds_done"] = seconds_done
+                _job_progress["total_seconds"] = total_seconds
+                if total_seconds and total_seconds > 0:
+                    _job_progress["progress"] = min(seconds_done / total_seconds, 1.0)
+                    _job_progress["message"] = f"Processed {seconds_done:.1f}/{total_seconds:.1f} seconds"
+                elif total_frames and total_frames > 0:
                     _job_progress["progress"] = frames_done / total_frames
-                _job_progress["message"] = f"Processed {frames_done}/{total_frames} frames"
+                    _job_progress["message"] = f"Processed {frames_done}/{total_frames} frames"
+                else:
+                    _job_progress["message"] = f"Processed {seconds_done:.1f} seconds"
 
         print(f"[DEBUG] _run_analysis: calling service.process()...", flush=True)
         result = service.process(
@@ -81,7 +89,7 @@ def _run_analysis(
             extra_analysis=None,
             tracking_classes=tracking_classes,
             frame_skip=frame_skip,
-            max_frames=max_frames,
+            max_seconds=max_seconds,
             progress_callback=_progress_callback,
         )
         print(f"[DEBUG] _run_analysis: after service.process() -> result.id={result.id}", flush=True)
@@ -449,12 +457,7 @@ class AppHandler(BaseHTTPRequestHandler):
             if not file_path.exists() or not file_path.is_file():
                 self.send_error(404)
                 return
-            import mimetypes
-            mime, _ = mimetypes.guess_type(str(file_path))
-            self.send_response(200)
-            self.send_header("Content-Type", mime or "application/octet-stream")
-            self.end_headers()
-            self.wfile.write(file_path.read_bytes())
+            self._send_file(file_path)
             return
 
         self.send_error(404)
@@ -467,6 +470,11 @@ class AppHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/rois/"):
             roi_id = path.removeprefix("/api/rois/")
             self._api_delete_roi(roi_id)
+            return
+
+        if path.startswith("/api/sources/"):
+            source_id = path.removeprefix("/api/sources/")
+            self._api_delete_source(source_id)
             return
 
         self.send_error(404)
@@ -530,12 +538,22 @@ class AppHandler(BaseHTTPRequestHandler):
             if frame_skip < 1:
                 frame_skip = 1
 
-            max_frames = body.get("max_frames")
-            if max_frames is not None:
+            max_seconds = body.get("max_seconds")
+            if max_seconds is None:
+                max_frames = body.get("max_frames")
+                if max_frames is not None:
+                    try:
+                        max_frames = int(max_frames)
+                    except (ValueError, TypeError):
+                        max_frames = None
+                    max_seconds = max_frames
+            if max_seconds is not None:
                 try:
-                    max_frames = int(max_frames)
+                    max_seconds = int(max_seconds)
                 except (ValueError, TypeError):
-                    max_frames = None
+                    max_seconds = None
+            if max_seconds is not None and max_seconds <= 0:
+                max_seconds = None
         else:
             # Backward compat: form-urlencoded (no new fields)
             form = parse_qs(raw.decode("utf-8"))
@@ -543,9 +561,9 @@ class AppHandler(BaseHTTPRequestHandler):
             output_video = form.get("output_video", [""])[0] == "on"
             tracking_class_ids = None
             frame_skip = 1
-            max_frames = None
+            max_seconds = None
 
-        print(f"[DEBUG] AppHandler._handle_process: video_source_id={video_source_id} output_video={output_video} tracking_class_ids={tracking_class_ids} frame_skip={frame_skip} max_frames={max_frames}", flush=True)
+        print(f"[DEBUG] AppHandler._handle_process: video_source_id={video_source_id} output_video={output_video} tracking_class_ids={tracking_class_ids} frame_skip={frame_skip} max_seconds={max_seconds}", flush=True)
 
         # Validate source exists before spawning thread
         config = _repo.get_by_id(video_source_id)
@@ -562,6 +580,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 "progress": 0.0,
                 "frames_done": 0,
                 "total_frames": None,
+                "seconds_done": 0.0,
+                "total_seconds": max_seconds,
                 "error": None,
                 "timestamp": datetime.now().isoformat(),
                 "message": "Starting analysis...",
@@ -570,7 +590,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
         thread = threading.Thread(
             target=_run_analysis,
-            args=(video_source_id, output_video, tracking_class_ids, frame_skip, max_frames),
+            args=(video_source_id, output_video, tracking_class_ids, frame_skip, max_seconds),
             daemon=True,
         )
         thread.start()
@@ -666,6 +686,21 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _api_delete_source(self, source_id: str) -> None:
+        """DELETE /api/sources/<id>"""
+        print(f"[DEBUG] AppHandler._api_delete_source: ENTRY source_id={source_id}", flush=True)
+        existing = _repo.get_by_id(source_id)
+        if existing is None:
+            print(f"[DEBUG] AppHandler._api_delete_source: source not found, 404", flush=True)
+            self._send_json(404, {"error": "Source not found"})
+            return
+
+        _repo.delete(source_id)
+        print(f"[DEBUG] AppHandler._api_delete_source: deleted source {source_id}, 204", flush=True)
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _api_update_roi_config(self, roi_id: str) -> None:
         """PUT /api/rois/<id>/config"""
         print(f"[DEBUG] AppHandler._api_update_roi_config: ENTRY roi_id={roi_id}", flush=True)
@@ -698,6 +733,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 "progress": 0.0,
                 "frames_done": 0,
                 "total_frames": None,
+                "seconds_done": 0.0,
+                "total_seconds": None,
                 "error": None,
                 "timestamp": datetime.now().isoformat(),
                 "message": "No job running",
@@ -708,6 +745,8 @@ class AppHandler(BaseHTTPRequestHandler):
         status.setdefault("progress", 0.0)
         status.setdefault("frames_done", 0)
         status.setdefault("total_frames", None)
+        status.setdefault("seconds_done", 0.0)
+        status.setdefault("total_seconds", None)
         status.setdefault("error", None)
         status.setdefault("timestamp", datetime.now().isoformat())
         status.setdefault("message", "")
@@ -731,3 +770,40 @@ class AppHandler(BaseHTTPRequestHandler):
         except (ConnectionAbortedError, BrokenPipeError) as e:
             print(f"[DEBUG] AppHandler._send_html: client disconnected: {e}", flush=True)
             pass  # cliente desconectado, no podemos hacer nada
+
+    def _send_file(self, file_path: Path) -> None:
+        mime, _ = mimetypes.guess_type(str(file_path))
+        file_size = file_path.stat().st_size
+        range_header = self.headers.get("Range")
+        print(f"[DEBUG] AppHandler._send_file: path={file_path} size={file_size} range={range_header}", flush=True)
+
+        if range_header and range_header.startswith("bytes="):
+            try:
+                start_str, end_str = range_header.removeprefix("bytes=").split("-", 1)
+                start = int(start_str) if start_str else 0
+                end = int(end_str) if end_str else file_size - 1
+                start = max(0, min(start, file_size - 1))
+                end = max(start, min(end, file_size - 1))
+                length = end - start + 1
+
+                self.send_response(206)
+                self.send_header("Content-Type", mime or "application/octet-stream")
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+                self.send_header("Content-Length", str(length))
+                self.end_headers()
+
+                with file_path.open("rb") as fh:
+                    fh.seek(start)
+                    self.wfile.write(fh.read(length))
+                return
+            except Exception as exc:
+                print(f"[DEBUG] AppHandler._send_file: invalid range header -> {exc}", flush=True)
+
+        self.send_response(200)
+        self.send_header("Content-Type", mime or "application/octet-stream")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(file_size))
+        self.end_headers()
+        with file_path.open("rb") as fh:
+            shutil.copyfileobj(fh, self.wfile)

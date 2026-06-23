@@ -31,6 +31,7 @@ class EntityState:
     first_seen_frame: int
     last_seen_frame: int
     inside_rois: dict[str, bool]  # roi_id -> inside
+    roi_entry_started_at: dict[str, datetime]
 
 
 class CounterEngine:
@@ -47,25 +48,76 @@ class CounterEngine:
         self.zone_counts: dict[str, dict[str, int]] = {
             r.id: {"entry": 0, "exit": 0} for r in roi_configs
         }
+        self.zone_unique_tracks: dict[str, dict[str, set[int]]] = {
+            r.id: {"entry": set(), "exit": set()} for r in roi_configs
+        }
         self.entity_states: dict[int, EntityState] = {}
         self.events: list[ZoneEventRecord] = []
         self.snapshots: list[OccupancySnapshot] = []
         self._frame_index = 0
 
-    def is_inside(self, roi_id: str, point: tuple[float, float]) -> bool:
-        return cv2.pointPolygonTest(
-            self.roi_polygons[roi_id], point, measureDist=False
-        ) >= 0
+    @staticmethod
+    def _orientation(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    @staticmethod
+    def _on_segment(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> bool:
+        return (
+            min(a[0], b[0]) <= c[0] <= max(a[0], b[0])
+            and min(a[1], b[1]) <= c[1] <= max(a[1], b[1])
+        )
+
+    @classmethod
+    def _segments_intersect(
+        cls,
+        p1: tuple[float, float],
+        p2: tuple[float, float],
+        q1: tuple[float, float],
+        q2: tuple[float, float],
+    ) -> bool:
+        eps = 1e-6
+        o1 = cls._orientation(p1, p2, q1)
+        o2 = cls._orientation(p1, p2, q2)
+        o3 = cls._orientation(q1, q2, p1)
+        o4 = cls._orientation(q1, q2, p2)
+
+        if (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0):
+            return True
+        if abs(o1) < eps and cls._on_segment(p1, p2, q1):
+            return True
+        if abs(o2) < eps and cls._on_segment(p1, p2, q2):
+            return True
+        if abs(o3) < eps and cls._on_segment(q1, q2, p1):
+            return True
+        if abs(o4) < eps and cls._on_segment(q1, q2, p2):
+            return True
+        return False
+
+    def is_inside(self, roi_id: str, foot_left: tuple[float, float], foot_right: tuple[float, float]) -> bool:
+        polygon = self.roi_polygons[roi_id]
+        foot_center = ((foot_left[0] + foot_right[0]) / 2.0, (foot_left[1] + foot_right[1]) / 2.0)
+
+        if cv2.pointPolygonTest(polygon, foot_center, measureDist=False) >= 0:
+            return True
+
+        pts = [tuple(map(float, pt)) for pt in polygon.tolist()]
+        for idx in range(len(pts)):
+            seg_start = pts[idx]
+            seg_end = pts[(idx + 1) % len(pts)]
+            if self._segments_intersect(foot_left, foot_right, seg_start, seg_end):
+                return True
+        return False
 
     def update(
         self,
         frame_index: int,
         track_id: int,
         center: tuple[float, float],
-        foot: tuple[float, float],
+        foot_left: tuple[float, float],
+        foot_right: tuple[float, float],
         timestamp: datetime,
     ) -> None:
-        print(f"[DEBUG] CounterEngine.update: ENTRY frame_index={frame_index} track_id={track_id} foot=({foot[0]:.1f},{foot[1]:.1f})", flush=True)
+        print(f"[DEBUG] CounterEngine.update: ENTRY frame_index={frame_index} track_id={track_id} foot_left=({foot_left[0]:.1f},{foot_left[1]:.1f}) foot_right=({foot_right[0]:.1f},{foot_right[1]:.1f})", flush=True)
         self._frame_index = frame_index
         now = timestamp
 
@@ -78,6 +130,7 @@ class CounterEngine:
                 first_seen_frame=frame_index,
                 last_seen_frame=frame_index,
                 inside_rois={},
+                roi_entry_started_at={},
             )
             print(f"[DEBUG] CounterEngine.update: new entity_state for track_id={track_id}", flush=True)
         else:
@@ -87,11 +140,13 @@ class CounterEngine:
 
         # Check each ROI
         for roi_id, roi in self.roi_configs.items():
-            inside = self.is_inside(roi_id, foot)
+            inside = self.is_inside(roi_id, foot_left, foot_right)
             prev = self.zone_state[roi_id].get(track_id)
 
             if prev is False and inside and roi.detect_entry:
                 self.zone_counts[roi_id]["entry"] += 1
+                self.zone_unique_tracks[roi_id]["entry"].add(track_id)
+                self.entity_states[track_id].roi_entry_started_at[roi_id] = now
                 self.events.append(
                     ZoneEventRecord(
                         roi_id=roi_id,
@@ -104,7 +159,11 @@ class CounterEngine:
                 print(f"[DEBUG] CounterEngine.update: ENTRY event roi={roi_id} track={track_id}", flush=True)
             elif prev is True and not inside and roi.detect_exit:
                 self.zone_counts[roi_id]["exit"] += 1
-                dwell = (now - self.entity_states[track_id].first_seen_at).total_seconds()
+                self.zone_unique_tracks[roi_id]["exit"].add(track_id)
+                entry_started_at = self.entity_states[track_id].roi_entry_started_at.get(
+                    roi_id, self.entity_states[track_id].first_seen_at
+                )
+                dwell = (now - entry_started_at).total_seconds()
                 self.events.append(
                     ZoneEventRecord(
                         roi_id=roi_id,
@@ -116,6 +175,7 @@ class CounterEngine:
                     )
                 )
                 print(f"[DEBUG] CounterEngine.update: EXIT event roi={roi_id} track={track_id} dwell={dwell:.1f}s", flush=True)
+                self.entity_states[track_id].roi_entry_started_at.pop(roi_id, None)
 
             self.zone_state[roi_id][track_id] = inside
             self.entity_states[track_id].inside_rois[roi_id] = inside
@@ -159,6 +219,34 @@ class CounterEngine:
         ]
         print(f"[DEBUG] CounterEngine.get_tracked_entities: returning {len(result)} records", flush=True)
         return result
+
+    def get_unique_inside_count(self) -> int:
+        unique_inside = {
+            track_id
+            for track_id, state in self.entity_states.items()
+            if any(state.inside_rois.values())
+        }
+        return len(unique_inside)
+
+    def get_roi_unique_count(self, roi_id: str, direction: str) -> int:
+        return len(self.zone_unique_tracks[roi_id][direction])
+
+
+def _open_video_writer(output_path: Path, fps: float, size: tuple[int, int]) -> cv2.VideoWriter:
+    codecs = ("avc1", "H264", "mp4v")
+    for codec in codecs:
+        writer = cv2.VideoWriter(
+            str(output_path),
+            cv2.VideoWriter_fourcc(*codec),
+            fps,
+            size,
+        )
+        if writer.isOpened():
+            print(f"[DEBUG] _open_video_writer: using codec={codec} path={output_path}", flush=True)
+            return writer
+        writer.release()
+        print(f"[DEBUG] _open_video_writer: codec={codec} not available", flush=True)
+    raise RuntimeError("No compatible video codec available for browser playback")
 
 
 # ── Model cache (singleton lazy) ────────────────────────────────────────────
@@ -225,10 +313,12 @@ def _annotate_frame(
         cv2.polylines(annotated, [pts], isClosed=True, color=(15, 118, 110), thickness=2)
 
         inside_now = sum(1 for inside in engine.zone_state[roi.id].values() if inside)
+        entered_unique = engine.get_roi_unique_count(roi.id, "entry")
+        exited_unique = engine.get_roi_unique_count(roi.id, "exit")
         label = (
             f"{roi.name} | in:{inside_now} "
-            f"ent:{engine.zone_counts[roi.id]['entry']} "
-            f"sal:{engine.zone_counts[roi.id]['exit']}"
+            f"entered:{entered_unique} "
+            f"exited:{exited_unique}"
         )
         anchor = pts[0]
         text_pos = (int(anchor[0]), max(24, int(anchor[1]) - 8))
@@ -281,19 +371,18 @@ def _annotate_frame(
                 cv2.LINE_AA,
             )
 
-    total_inside = sum(
-        sum(1 for inside in engine.zone_state[roi.id].values() if inside)
-        for roi in roi_configs
-        if roi.detect_occupancy
-    )
+    total_inside = engine.get_unique_inside_count()
+    total_entered = sum(engine.get_roi_unique_count(roi.id, "entry") for roi in roi_configs)
+    total_exited = sum(engine.get_roi_unique_count(roi.id, "exit") for roi in roi_configs)
     lines = [
-        f"Tracks: {len(engine.entity_states)}",
-        f"Eventos: {len(engine.events)}",
-        f"Personas en ROI: {total_inside}",
+        f"Tracked IDs: {len(engine.entity_states)}",
+        f"People currently inside ROI: {total_inside}",
+        f"Unique ROI entries: {total_entered}",
+        f"Unique ROI exits: {total_exited}",
     ]
     for roi in roi_configs[:4]:
         lines.append(
-            f"{roi.name}: E {engine.zone_counts[roi.id]['entry']} | S {engine.zone_counts[roi.id]['exit']}"
+            f"{roi.name}: Entered {engine.get_roi_unique_count(roi.id, 'entry')} | Exited {engine.get_roi_unique_count(roi.id, 'exit')}"
         )
     _draw_multiline_panel(annotated, lines)
 
@@ -319,10 +408,10 @@ class AnalyticsService:
         extra_analysis: Optional[dict] = None,
         tracking_classes: Optional[list[int]] = None,
         frame_skip: int = 1,
-        max_frames: Optional[int] = None,
+        max_seconds: Optional[int] = None,
         progress_callback: Optional[callable] = None,
     ) -> SessionResult:
-        print(f"[DEBUG] AnalyticsService.process: ENTRY write_video={write_video} tracking_classes={tracking_classes} frame_skip={frame_skip} max_frames={max_frames} provider={type(self.provider).__name__}", flush=True)
+        print(f"[DEBUG] AnalyticsService.process: ENTRY write_video={write_video} tracking_classes={tracking_classes} frame_skip={frame_skip} max_seconds={max_seconds} provider={type(self.provider).__name__}", flush=True)
         model = _get_model()
         engine = CounterEngine(self.roi_configs)
 
@@ -338,6 +427,13 @@ class AnalyticsService:
         frame_index = 0
         processed_frames = 0
         timestamp_mode = TimestampMode.REALTIME if self.provider.is_live else TimestampMode.FRAME_BASED
+        fps = self.provider.get_fps() or 30.0
+        total_source_frames = self.provider.get_total_frames()
+        total_seconds_target = None
+        if max_seconds is not None:
+            total_seconds_target = float(max_seconds)
+        elif total_source_frames and fps > 0:
+            total_seconds_target = total_source_frames / fps
 
         try:
             while True:
@@ -356,15 +452,9 @@ class AnalyticsService:
 
                 if write_video and writer is None:
                     h, w = frame.shape[:2]
-                    fps = self.provider.get_fps() or 30.0
                     out_path = OUTPUT_PATH / f"{self.config.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
                     print(f"[DEBUG] AnalyticsService.process: initializing VideoWriter -> {out_path} fps={fps} size=({w},{h})", flush=True)
-                    writer = cv2.VideoWriter(
-                        str(out_path),
-                        cv2.VideoWriter_fourcc(*"mp4v"),
-                        fps,
-                        (w, h),
-                    )
+                    writer = _open_video_writer(out_path, fps, (w, h))
 
                 # Use tracking_classes if provided, default to [0] (person only) for backward compat
                 track_classes = tracking_classes if tracking_classes is not None else [0]
@@ -387,10 +477,11 @@ class AnalyticsService:
 
                     for bbox, track_id in zip(boxes, ids):
                         x1, y1, x2, y2 = bbox
-                        foot = ((x1 + x2) / 2.0, y2)
                         center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+                        foot_left = (x1, y2)
+                        foot_right = (x2, y2)
                         ts = datetime.now() if timestamp_mode == TimestampMode.REALTIME else started_at
-                        engine.update(frame_index, int(track_id), center, foot, ts)
+                        engine.update(frame_index, int(track_id), center, foot_left, foot_right, ts)
                     print(f"[DEBUG] AnalyticsService.process: after engine.update() total_events={len(engine.events)}", flush=True)
                 else:
                     print(f"[DEBUG] AnalyticsService.process: YOLO returned no tracked objects (boxes={result.boxes is not None}, ids={result.boxes is not None and result.boxes.id is not None})", flush=True)
@@ -402,16 +493,17 @@ class AnalyticsService:
 
                 frame_index += 1
                 processed_frames += 1
+                elapsed_seconds = frame_index / fps if fps > 0 else float(processed_frames)
 
-                # Max frames limit
-                if max_frames is not None and processed_frames >= max_frames:
-                    print(f"[DEBUG] AnalyticsService.process: reached max_frames={max_frames}, breaking", flush=True)
+                # Time limit in source-video seconds
+                if max_seconds is not None and elapsed_seconds >= max_seconds:
+                    print(f"[DEBUG] AnalyticsService.process: reached max_seconds={max_seconds}, breaking", flush=True)
                     break
 
                 # Progress callback
                 if progress_callback:
-                    total = max_frames or (frame_index + 1)
-                    progress_callback(processed_frames, total)
+                    total_frames_for_progress = int(total_seconds_target * fps) if total_seconds_target is not None and fps > 0 else total_source_frames
+                    progress_callback(processed_frames, total_frames_for_progress, elapsed_seconds, total_seconds_target)
         finally:
             print(f"[DEBUG] AnalyticsService.process: ENTERING finally block", flush=True)
             if writer:
