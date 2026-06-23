@@ -3,8 +3,9 @@ services:
     build: .
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      NEON_DB_URL: postgresql://neondb_owner:npg_JBb5dlq6Wsgf@ep-damp-mouse-acdmtvfy-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
       YOLO_MODEL_PATH: /app/src/inference/yolo11n.pt
       OUTPUT_DIR: /app/outputs
       REPORTS_DIR: /app/reports
