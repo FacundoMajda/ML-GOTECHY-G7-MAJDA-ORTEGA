@@ -1,4 +1,5 @@
 # src/services/analytics_service.py
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -567,9 +568,24 @@ class AnalyticsService:
     def _persist_session(self, session_result: SessionResult) -> UUID:
         print(f"[DEBUG] AnalyticsService._persist_session: ENTRY", flush=True)
         session_id = self._session_repo.create_session(session_result)
-        self._entity_repo.save_all(session_id, session_result.tracked_entities)
-        for snap in session_result.occupancy_snapshots:
-            self._snapshot_repo.create(session_id, snap)
-        for ev in session_result.zone_events:
-            self._zone_repo.create(session_id, ev)
+        print(f"[DEBUG] AnalyticsService._persist_session: session created, persisting entities/snapshots/events in parallel", flush=True)
+        # Las 3 operaciones son independientes → corren en paralelo
+        # 3 threads independientes con 3 connections distintas del pool
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="persist") as executor:
+            f_entities = executor.submit(
+                self._entity_repo.save_all,
+                session_id, session_result.tracked_entities,
+            )
+            f_snapshots = executor.submit(
+                self._snapshot_repo.create_batch,
+                session_id, session_result.occupancy_snapshots,
+            )
+            f_events = executor.submit(
+                self._zone_repo.create_batch,
+                session_id, session_result.zone_events,
+            )
+            # Esperar y propagar excepciones (fail fast)
+            for future in (f_entities, f_snapshots, f_events):
+                future.result()
+        print(f"[DEBUG] AnalyticsService._persist_session: parallel persist complete", flush=True)
         return session_id

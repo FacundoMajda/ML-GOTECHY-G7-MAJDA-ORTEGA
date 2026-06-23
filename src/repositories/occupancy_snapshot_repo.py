@@ -2,26 +2,31 @@
 from uuid import UUID
 
 from src.models.contracts import OccupancySnapshot
-from src.repositories.db import execute_query
+from src.repositories.db import execute_batch, execute_query
 
 
 class OccupancySnapshotRepository:
-    def create(self, session_id: UUID, snapshot: OccupancySnapshot) -> None:
-        print(f"[DEBUG] OccupancySnapshotRepository.create: ENTRY session_id={session_id} roi_id={snapshot.roi_id}", flush=True)
-        execute_query(
+    def create_batch(self, session_id: UUID, snapshots: list[OccupancySnapshot]) -> None:
+        if not snapshots:
+            print("[DEBUG] OccupancySnapshotRepository.create_batch: 0 snapshots, skip", flush=True)
+            return
+        params_list = [
+            (str(session_id), snap.roi_id, snap.captured_at,
+             snap.frame_number, snap.count_inside, snap.count_outside, snap.track_ids_inside)
+            for snap in snapshots
+        ]
+        print(f"[DEBUG] OccupancySnapshotRepository.create_batch: batch insert n={len(params_list)}", flush=True)
+        execute_batch(
             """
             INSERT INTO roi_occupancy_snapshot
             (session_id, roi_id, captured_at, frame_number, count_inside, count_outside, track_ids_inside)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (session_id, roi_id, frame_number) DO NOTHING
             """,
-            (str(session_id), snapshot.roi_id, snapshot.captured_at,
-             snapshot.frame_number, snapshot.count_inside,
-             snapshot.count_outside, snapshot.track_ids_inside),
-            fetch=None,
+            params_list,
         )
 
     def get_occupancy_trends(self) -> list[dict]:
-        print(f"[DEBUG] OccupancySnapshotRepository.get_occupancy_trends: ENTRY", flush=True)
         rows = execute_query(
             """
             SELECT date_trunc('hour', captured_at) AS hour,

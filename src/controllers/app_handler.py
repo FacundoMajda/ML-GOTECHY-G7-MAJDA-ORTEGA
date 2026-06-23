@@ -76,7 +76,6 @@ def _run_analysis(
         service = AnalyticsService(config, rois, persist=True)
 
         def _progress_callback(frames_done: int, total_frames: int | None, seconds_done: float, total_seconds: float | None) -> None:
-            print(f"[DEBUG] _progress_callback: frames_done={frames_done} total_frames={total_frames} seconds_done={seconds_done} total_seconds={total_seconds}", flush=True)
             with _job_lock:
                 _job_progress["frames_done"] = frames_done
                 _job_progress["total_frames"] = total_frames
@@ -84,12 +83,12 @@ def _run_analysis(
                 _job_progress["total_seconds"] = total_seconds
                 if total_seconds and total_seconds > 0:
                     _job_progress["progress"] = min(seconds_done / total_seconds, 1.0)
-                    _job_progress["message"] = f"Processed {seconds_done:.1f}/{total_seconds:.1f} seconds"
+                    _job_progress["message"] = f"Processing frames: {seconds_done:.1f}/{total_seconds:.1f}s ({frames_done} frames)"
                 elif total_frames and total_frames > 0:
                     _job_progress["progress"] = frames_done / total_frames
-                    _job_progress["message"] = f"Processed {frames_done}/{total_frames} frames"
+                    _job_progress["message"] = f"Processing frames: {frames_done}/{total_frames}"
                 else:
-                    _job_progress["message"] = f"Processed {seconds_done:.1f} seconds"
+                    _job_progress["message"] = f"Processing frames: {seconds_done:.1f}s"
 
         print(f"[DEBUG] _run_analysis: calling service.process()...", flush=True)
         result = service.process(
@@ -101,6 +100,11 @@ def _run_analysis(
             progress_callback=_progress_callback,
         )
         print(f"[DEBUG] _run_analysis: after service.process() -> result.id={result.id}", flush=True)
+
+        # Feedback post-procesamiento — UI ya no se queda congelada
+        with _job_lock:
+            _job_progress["message"] = "Saving results to database..."
+            _job_progress["timestamp"] = datetime.now().isoformat()
 
         # Save report HTML to disk
         print(f"[DEBUG] _run_analysis: calling generate_report_html(str(result.id))", flush=True)

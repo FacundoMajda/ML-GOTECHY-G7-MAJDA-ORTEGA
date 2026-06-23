@@ -7,7 +7,7 @@ import yt_dlp
 
 
 _FORMAT_CANDIDATES = [
-    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
+    "(bv*[vcodec!*=av01]+ba/b[vcodec!*=av01])/best[vcodec!*=av01]",
     "best[height<=1080][ext=mp4]/best[height<=1080]/best",
     "bv*+ba/b",
     "best",

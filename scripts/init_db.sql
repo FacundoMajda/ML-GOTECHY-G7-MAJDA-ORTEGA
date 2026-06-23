@@ -100,7 +100,8 @@ CREATE TABLE roi_occupancy_snapshot (
     frame_number    INTEGER,
     count_inside    INTEGER     NOT NULL DEFAULT 0,
     count_outside   INTEGER     NOT NULL DEFAULT 0,
-    track_ids_inside INTEGER[]  NOT NULL DEFAULT '{}'
+    track_ids_inside INTEGER[]  NOT NULL DEFAULT '{}',
+    CONSTRAINT uq_snapshot_per_frame UNIQUE (session_id, roi_id, frame_number)
 );
 
 -- ============================================================

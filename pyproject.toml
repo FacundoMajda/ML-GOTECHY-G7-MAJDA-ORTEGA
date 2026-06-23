@@ -13,6 +13,7 @@ dependencies = [
     "fsspec==2026.6.0",
     "idna==3.18",
     "jinja2==3.1.6",
+    "lap>=0.5.12",
     "kiwisolver==1.5.0",
     "markupsafe==3.0.3",
     "matplotlib==3.11.0",
@@ -46,3 +47,18 @@ dependencies = [
 
 # Nota: la config de `python-downloads = "never"` se pasa por env var en el Dockerfile
 # (UV_PYTHON_DOWNLOADS=never) porque [tool.uv] no acepta esa key para el caso runtime.
+
+# PyTorch CPU-only index. Sin esto, `uv lock` resuelve torch==2.12.1 desde PyPI
+# (build con CUDA, no CPU) y rompe la imagen. Pin explícito al índice CPU.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu" },
+]

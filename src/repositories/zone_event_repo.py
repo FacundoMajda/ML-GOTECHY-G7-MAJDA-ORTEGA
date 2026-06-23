@@ -4,26 +4,31 @@ import uuid
 from uuid import UUID
 
 from src.models.contracts import ZoneEventRecord
-from src.repositories.db import execute_query
+from src.repositories.db import execute_batch, execute_query
 
 
 class ZoneEventRepository:
-    def create(self, session_id: UUID, event: ZoneEventRecord) -> None:
-        print(f"[DEBUG] ZoneEventRepository.create: ENTRY session_id={session_id} roi_id={event.roi_id} type={event.event_type.value}", flush=True)
-        execute_query(
+    def create_batch(self, session_id: UUID, events: list[ZoneEventRecord]) -> None:
+        if not events:
+            print("[DEBUG] ZoneEventRepository.create_batch: 0 events, skip", flush=True)
+            return
+        params_list = [
+            (str(uuid.uuid4()), str(session_id), ev.roi_id, ev.track_id,
+             ev.event_type.value, ev.occurred_at, ev.frame_number,
+             ev.dwell_seconds, json.dumps(ev.metadata))
+            for ev in events
+        ]
+        print(f"[DEBUG] ZoneEventRepository.create_batch: batch insert n={len(params_list)}", flush=True)
+        execute_batch(
             """
             INSERT INTO zone_event
             (id, session_id, roi_id, track_id, event_type, occurred_at, frame_number, dwell_seconds, metadata)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (str(uuid.uuid4()), str(session_id), event.roi_id, event.track_id,
-             event.event_type.value, event.occurred_at, event.frame_number,
-             event.dwell_seconds, json.dumps(event.metadata)),
-            fetch=None,
+            params_list,
         )
 
     def get_dwell_times(self) -> list[dict]:
-        print(f"[DEBUG] ZoneEventRepository.get_dwell_times: ENTRY", flush=True)
         rows = execute_query(
             """
             SELECT ze.roi_id, r.name AS roi_name,
