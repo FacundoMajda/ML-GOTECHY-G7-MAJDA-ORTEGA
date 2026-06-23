@@ -6,6 +6,9 @@ from src.models.contracts import SessionResult
 
 def generate_report_html(summary: SessionResult) -> str:
     print(f"[DEBUG] report_service.generate_report_html: ENTRY session_id={summary.id} video_source_id={summary.video_source_id} n_events={len(summary.zone_events)} n_entities={len(summary.tracked_entities)}", flush=True)
+    entry_events = [e for e in summary.zone_events if e.event_type.value == "entry"]
+    exit_events = [e for e in summary.zone_events if e.event_type.value == "exit"]
+
     if summary.zone_events:
         rows = []
         for ev in summary.zone_events[-50:]:
@@ -22,18 +25,18 @@ def generate_report_html(summary: SessionResult) -> str:
     else:
         events_rows = "<tr><td colspan='5'>Sin eventos registrados.</td></tr>"
 
-    entry_count = sum(1 for e in summary.zone_events if e.event_type.value == "entry")
-    exit_count = sum(1 for e in summary.zone_events if e.event_type.value == "exit")
+    entry_count = len(entry_events)
+    exit_count = len(exit_events)
+    unique_entry_count = len({e.track_id for e in entry_events if e.track_id is not None})
+    unique_exit_count = len({e.track_id for e in exit_events if e.track_id is not None})
     roi_ids = sorted({e.roi_id for e in summary.zone_events} | {s.roi_id for s in summary.occupancy_snapshots})
 
     roi_rows = []
     for roi_id in roi_ids:
-        roi_entry = sum(
-            1 for e in summary.zone_events if e.roi_id == roi_id and e.event_type.value == "entry"
-        )
-        roi_exit = sum(
-            1 for e in summary.zone_events if e.roi_id == roi_id and e.event_type.value == "exit"
-        )
+        roi_entry_events = [e for e in entry_events if e.roi_id == roi_id]
+        roi_exit_events = [e for e in exit_events if e.roi_id == roi_id]
+        roi_entry = len({e.track_id for e in roi_entry_events if e.track_id is not None})
+        roi_exit = len({e.track_id for e in roi_exit_events if e.track_id is not None})
         roi_snapshots = [s for s in summary.occupancy_snapshots if s.roi_id == roi_id]
         max_inside = max((s.count_inside for s in roi_snapshots), default=0)
         last_inside = roi_snapshots[-1].count_inside if roi_snapshots else 0
@@ -113,20 +116,20 @@ def generate_report_html(summary: SessionResult) -> str:
 
     <div class="stats">
       <div class="stat">
-        <div class="label">Entradas</div>
+        <div class="label">Entradas unicas</div>
+        <div class="value">{unique_entry_count}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Salidas unicas</div>
+        <div class="value">{unique_exit_count}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Eventos de entrada</div>
         <div class="value">{entry_count}</div>
       </div>
       <div class="stat">
-        <div class="label">Salidas</div>
+        <div class="label">Eventos de salida</div>
         <div class="value">{exit_count}</div>
-      </div>
-      <div class="stat">
-        <div class="label">Entidades trackeadas</div>
-        <div class="value">{len(summary.tracked_entities)}</div>
-      </div>
-      <div class="stat">
-        <div class="label">Eventos totales</div>
-        <div class="value">{len(summary.zone_events)}</div>
       </div>
     </div>
 
@@ -134,9 +137,10 @@ def generate_report_html(summary: SessionResult) -> str:
 
     <div class="panel">
       <h2>Resumen por ROI</h2>
+      <p class="muted">Esta tabla muestra personas unicas por ROI para evitar inflar estadisticas cuando la misma ID entra o sale varias veces.</p>
       <table>
         <thead>
-          <tr><th>ROI</th><th>Entradas</th><th>Salidas</th><th>Max dentro</th><th>Ultimo snapshot</th></tr>
+          <tr><th>ROI</th><th>Entraron</th><th>Salieron</th><th>Max dentro</th><th>Ultimo snapshot</th></tr>
         </thead>
         <tbody>
           {roi_rows_html}

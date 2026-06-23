@@ -189,6 +189,33 @@ def render_home() -> str:
     }
     .report-link:hover { filter: brightness(1.05); }
     .report-link.disabled { background: #d1d5db; cursor: not-allowed; pointer-events: none; }
+    .inline-result {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .inline-result-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .inline-result-head h3 {
+      margin: 0;
+      font-size: 1rem;
+      color: var(--accent);
+    }
+    .inline-result-frame {
+      width: 100%;
+      min-height: 720px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
 
     /* ── Overlay ── */
     .overlay {
@@ -210,7 +237,21 @@ def render_home() -> str:
       display: flex; align-items: center; justify-content: space-between;
       padding: 18px 20px; border-bottom: 1px solid var(--line); flex-shrink: 0;
     }
+    .drawer-title-row {
+      display: flex; align-items: center; gap: 10px; min-width: 0;
+    }
     .drawer-header span { font-weight: 700; font-size: 1rem; }
+    .header-danger-btn {
+      border: 1px solid rgba(220,38,38,0.25);
+      background: rgba(220,38,38,0.08);
+      color: #dc2626;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .header-danger-btn:hover { background: rgba(220,38,38,0.14); }
     #drawer-close {
       background: none; border: none; font-size: 1.4rem; cursor: pointer;
       color: var(--muted); padding: 4px 8px; border-radius: 6px;
@@ -482,7 +523,10 @@ def render_home() -> str:
   <!-- DRAWER -->
   <aside id="drawer" class="drawer">
     <div class="drawer-header">
-      <span id="drawer-title">Source Name</span>
+      <div class="drawer-title-row">
+        <span id="drawer-title">Source Name</span>
+        <button id="delete-source-btn" class="header-danger-btn" style="display:none">Delete Source</button>
+      </div>
       <button id="drawer-close">&times;</button>
     </div>
     <div class="drawer-tabs">
@@ -547,6 +591,7 @@ def render_home() -> str:
     modalSessionId: null,
     modalError: null,
     pollingInterval: null,
+    selectedSessionId: null,
   };
   let pendingSourceFile = null;
 
@@ -597,7 +642,7 @@ def render_home() -> str:
       state.sourceSettings[sourceId] = {
         tracking_classes: ['person'],
         frame_skip: 1,
-        max_frames: null,
+        max_seconds: null,
       };
     }
     return state.sourceSettings[sourceId];
@@ -733,7 +778,7 @@ def render_home() -> str:
       return;
     }
 
-    content.innerHTML = '<div class="jobs-table-wrap"><table class="jobs-table"><thead><tr><th>Source</th><th>Status</th><th>Date</th><th>Duration</th><th>Entities</th><th>Events</th><th></th></tr></thead><tbody id="jobs-tbody"></tbody></table></div>';
+    content.innerHTML = '<div class="jobs-table-wrap"><table class="jobs-table"><thead><tr><th>Source</th><th>Status</th><th>Date</th><th>Duration</th><th>Entities</th><th>Events</th><th></th></tr></thead><tbody id="jobs-tbody"></tbody></table></div><div id="inline-session-result"></div>';
 
     const tbody = document.getElementById('jobs-tbody');
     tbody.innerHTML = state.sessions.map(s => {
@@ -751,7 +796,7 @@ def render_home() -> str:
 
       const hasReport = status === 'completed';
       const reportLink = hasReport
-        ? '<a href="/api/sessions/' + esc(s.id) + '/report" target="_blank" class="report-link">Report</a>'
+        ? '<button type="button" class="report-link" data-session-report="' + esc(s.id) + '">Report</button>'
         : '<span class="report-link disabled">Report</span>';
 
       return '<tr>'
@@ -764,6 +809,29 @@ def render_home() -> str:
         + '<td>' + reportLink + '</td>'
         + '</tr>';
     }).join('');
+
+    tbody.querySelectorAll('[data-session-report]').forEach(btn => {
+      btn.onclick = () => {
+        state.selectedSessionId = btn.dataset.sessionReport;
+        renderJobsTab();
+      };
+    });
+
+    const resultHost = document.getElementById('inline-session-result');
+    if (resultHost && state.selectedSessionId) {
+      resultHost.innerHTML = `
+        <div class="inline-result">
+          <div class="inline-result-head">
+            <h3>Analysis Output</h3>
+            <a href="/api/sessions/${esc(state.selectedSessionId)}/report" target="_blank" class="report-link">Open in new tab</a>
+          </div>
+          <iframe
+            class="inline-result-frame"
+            src="/api/sessions/${esc(state.selectedSessionId)}/report"
+            title="Analysis report ${esc(state.selectedSessionId)}"></iframe>
+        </div>
+      `;
+    }
   }
 
   // ── DRAWER ──
@@ -798,10 +866,17 @@ def render_home() -> str:
     if (!src || !state.drawerOpen) {
       drawer.classList.remove('open');
       overlay.classList.remove('open');
+      const deleteSourceBtn = document.getElementById('delete-source-btn');
+      if (deleteSourceBtn) deleteSourceBtn.style.display = 'none';
       return;
     }
 
     document.getElementById('drawer-title').textContent = src.name;
+    const deleteSourceBtn = document.getElementById('delete-source-btn');
+    if (deleteSourceBtn) {
+      deleteSourceBtn.style.display = 'inline-block';
+      deleteSourceBtn.onclick = () => deleteSource(src.id, src.name);
+    }
 
     // Set preview image
     const img = document.getElementById('preview-img');
@@ -1053,7 +1128,10 @@ def render_home() -> str:
             <div id="alerts-${esc(roi.id)}"></div>
             <button class="btn-sm" onclick="addAlert('${esc(roi.id)}')">+ Add Alert</button>
           </div>
-          <button class="btn-primary btn-sm" onclick="saveROIConfig('${esc(roi.id)}')">Save Config</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn-primary btn-sm" onclick="saveROIConfig('${esc(roi.id)}')">Save Config</button>
+            <button class="btn-danger btn-sm" onclick="deleteROI('${esc(roi.id)}','${esc(roi.name)}')">Delete Area</button>
+          </div>
           <span id="config-msg-${esc(roi.id)}" style="font-size:0.8rem;color:var(--accent);margin-left:8px;"></span>
         </div>
       </details>
@@ -1128,6 +1206,47 @@ def render_home() -> str:
     });
   }
 
+  function deleteROI(roiId, roiName) {
+    const confirmed = window.confirm('Delete area "' + roiName + '"? This cannot be undone.');
+    if (!confirmed) return;
+
+    fetch('/api/rois/' + roiId, { method: 'DELETE' })
+      .then(async res => {
+        if (!res.ok && res.status !== 204) {
+          let data = {};
+          try { data = await res.json(); } catch (_) {}
+          throw new Error(data.error || 'Error deleting area');
+        }
+        return fetchSources();
+      })
+      .then(() => {
+        renderDrawer();
+      })
+      .catch(err => {
+        alert(err.message || 'Network error deleting area');
+      });
+  }
+
+  function deleteSource(sourceId, sourceName) {
+    const confirmed = window.confirm('Delete source "' + sourceName + '" and all its sessions/areas? This cannot be undone.');
+    if (!confirmed) return;
+
+    fetch('/api/sources/' + sourceId, { method: 'DELETE' })
+      .then(async res => {
+        if (!res.ok && res.status !== 204) {
+          let data = {};
+          try { data = await res.json(); } catch (_) {}
+          throw new Error(data.error || 'Error deleting source');
+        }
+        closeDrawer();
+        state.selectedSessionId = null;
+        return Promise.all([fetchSources(), fetchSessions()]);
+      })
+      .catch(err => {
+        alert(err.message || 'Network error deleting source');
+      });
+  }
+
   // ── SETTINGS TAB ──
 
   function renderSettingsTab() {
@@ -1149,11 +1268,12 @@ def render_home() -> str:
         </select>
       </div>
       <div class="settings-group">
-        <h3>Max Frames</h3>
+        <h3>Analysis Duration</h3>
         <div class="settings-inline">
-          <input type="number" id="settings-maxframes" min="100" step="100" value="${settings.max_frames||1000}" ${settings.max_frames===null?'disabled':''} onchange="updateSourceSetting('${esc(src.id)}','max_frames',this.value?parseInt(this.value):null)">
-          <label><input type="checkbox" id="settings-unlimited" ${settings.max_frames===null?'checked':''} onchange="toggleUnlimited('${esc(src.id)}')"> Unlimited</label>
+          <input type="number" id="settings-maxseconds" min="1" step="5" value="${settings.max_seconds||20}" ${settings.max_seconds===null?'disabled':''} onchange="updateSourceSetting('${esc(src.id)}','max_seconds',this.value?parseInt(this.value):null)">
+          <label><input type="checkbox" id="settings-unlimited" ${settings.max_seconds===null?'checked':''} onchange="toggleUnlimited('${esc(src.id)}')"> Full video</label>
         </div>
+        <p style="color:var(--muted);font-size:0.85rem;margin:8px 0 0">Set how many seconds from the start of the video we should analyze.</p>
       </div>
       <div class="settings-group">
         <h3>Global Alerts</h3>
@@ -1174,16 +1294,16 @@ def render_home() -> str:
   }
 
   function toggleUnlimited(sourceId) {
-    const input = document.getElementById('settings-maxframes');
+    const input = document.getElementById('settings-maxseconds');
     const checkbox = document.getElementById('settings-unlimited');
     if (checkbox.checked) {
       input.disabled = true;
       input.value = '';
-      updateSourceSetting(sourceId, 'max_frames', null);
+      updateSourceSetting(sourceId, 'max_seconds', null);
     } else {
       input.disabled = false;
-      input.value = input.value || '1000';
-      updateSourceSetting(sourceId, 'max_frames', parseInt(input.value) || null);
+      input.value = input.value || '20';
+      updateSourceSetting(sourceId, 'max_seconds', parseInt(input.value) || null);
     }
   }
 
@@ -1233,7 +1353,7 @@ def render_home() -> str:
           <div class="summary-row"><span class="summary-label">Source</span><span class="summary-value">${esc(srcName)}</span></div>
           <div class="summary-row"><span class="summary-label">Tracking Classes</span><span class="summary-value">${(settings.tracking_classes||['person']).join(', ')}</span></div>
           <div class="summary-row"><span class="summary-label">Frame Skip</span><span class="summary-value">Every ${settings.frame_skip||1} frame${settings.frame_skip>1?'s':''}</span></div>
-          <div class="summary-row"><span class="summary-label">Max Frames</span><span class="summary-value">${settings.max_frames ? settings.max_frames : 'Unlimited'}</span></div>
+          <div class="summary-row"><span class="summary-label">Duration</span><span class="summary-value">${settings.max_seconds ? settings.max_seconds + ' seconds' : 'Full video'}</span></div>
           <div class="summary-row"><span class="summary-label">Areas</span><span class="summary-value">${(src&&src.rois?src.rois.length:0)} area${src&&src.rois&&src.rois.length!==1?'s':''}</span></div>
         </div>
         <div class="modal-actions">
@@ -1262,13 +1382,19 @@ def render_home() -> str:
           <div class="result-icon" style="color:#16a34a">&#10003;</div>
           <h3>Analysis Complete!</h3>
           <p>Session ID: ${esc(state.modalSessionId)}</p>
+          <p>The output is ready below in the Jobs tab.</p>
         </div>
         <div class="modal-actions">
           <button class="btn-secondary" id="modal-close-btn">Close</button>
-          <a href="/api/sessions/${esc(state.modalSessionId)}/report" target="_blank" class="btn-primary" style="display:inline-block;text-align:center;padding:10px;border-radius:10px;text-decoration:none">View Report</a>
+          <button class="btn-primary" id="modal-view-output-btn">View Output</button>
         </div>
       `;
       document.getElementById('modal-close-btn').onclick = closeModal;
+      document.getElementById('modal-view-output-btn').onclick = () => {
+        state.selectedSessionId = state.modalSessionId;
+        closeModal();
+        switchTab('jobs');
+      };
 
     } else if (state.modalState === 'error') {
       document.getElementById('modal-title').textContent = 'Analysis Failed';
@@ -1304,7 +1430,7 @@ def render_home() -> str:
       video_source_id: state.modalSourceId,
       tracking_classes: settings.tracking_classes || ['person'],
       frame_skip: settings.frame_skip || 1,
-      max_frames: settings.max_frames,
+      max_seconds: settings.max_seconds,
       metrics: { entries: true, exits: true, occupancy: true, dwell_time: false, heatmap: false },
       output: { report: true, annotated_video: true },
     };
@@ -1344,7 +1470,7 @@ def render_home() -> str:
       const progressText = document.getElementById('progress-text');
       const progressFill = document.getElementById('progress-fill');
       if (progressText) {
-        progressText.textContent = data.message || 'Processed ' + (data.frames_done||0) + '/' + (data.total_frames||'?') + ' frames';
+        progressText.textContent = data.message || 'Processed ' + ((data.seconds_done||0).toFixed ? data.seconds_done.toFixed(1) : data.seconds_done) + ' seconds';
       }
       if (progressFill && data.progress > 0) {
         progressFill.style.width = (data.progress * 100) + '%';
@@ -1363,6 +1489,7 @@ def render_home() -> str:
       } else {
         state.modalState = 'result';
         state.modalSessionId = data.session_id;
+        state.selectedSessionId = data.session_id;
         renderModal();
         fetchSessions();
       }

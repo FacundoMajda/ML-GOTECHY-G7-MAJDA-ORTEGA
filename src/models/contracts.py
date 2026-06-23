@@ -105,5 +105,5 @@ class ROIAnalyticsConfig:
 class SourceAnalyticsConfig:
     tracking_classes: list[str] = field(default_factory=lambda: ["person"])
     frame_skip: int = 1
-    max_frames: int | None = None
+    max_seconds: int | None = None
     global_alerts: list = field(default_factory=list)

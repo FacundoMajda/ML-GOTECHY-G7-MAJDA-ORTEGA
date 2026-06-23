@@ -37,6 +37,7 @@ class SessionRepository:
                 session.output_video_path,
                 json.dumps(session.extra_analysis) if session.extra_analysis else None,
             ),
+            fetch=None,
         )
         print(f"[DEBUG] SessionRepository.create_session: returning uuid={session_uuid}", flush=True)
         return session_uuid
@@ -64,6 +65,7 @@ class SessionRepository:
                     e.first_seen_frame,
                     e.last_seen_frame,
                 ),
+                fetch=None,
             )
 
     def save_occupancy_snapshot(
@@ -85,6 +87,7 @@ class SessionRepository:
                 snapshot.count_outside,
                 snapshot.track_ids_inside,
             ),
+            fetch=None,
         )
 
     def save_zone_event(self, session_id: UUID, event: ZoneEventRecord) -> None:
@@ -106,6 +109,7 @@ class SessionRepository:
                 event.dwell_seconds,
                 json.dumps(event.metadata),
             ),
+            fetch=None,
         )
 
     def save_session_result(self, session: SessionResult) -> UUID:
