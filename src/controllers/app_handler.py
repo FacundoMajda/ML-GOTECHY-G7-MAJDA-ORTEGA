@@ -32,6 +32,7 @@ from src.repositories.video_source_repo import VideoSourceRepository
 from src.repositories.zone_event_repo import ZoneEventRepository
 from src.services.analytics_service import AnalyticsService
 from src.services.metrics_service import MetricsService
+from src.services.cohere_service import ask_cohere
 from src.services.report_service import generate_report_html
 from src.utils.html_utils import render_home
 
@@ -291,6 +292,7 @@ ROUTES_GET = {
 ROUTES_POST = {
     "/api/uploads": "_handle_upload_file",
     "/api/sources": "_handle_create_source",
+    "/api/chat": "_api_chat",
     re.compile(r"^/api/sources/([^/]+)/rois$"): "_api_create_roi",
     re.compile(r"^/api/rois/([^/]+)/alert-rules$"): "_api_create_alert_rule",
     re.compile(r"^/api/alert-rules/([^/]+)/toggle$"): "_api_toggle_alert_rule",
@@ -819,6 +821,21 @@ class AppHandler(BaseHTTPRequestHandler):
             print(f"[DEBUG] AppHandler._handle_create_source: EXCEPTION {e}", flush=True)
             traceback.print_exc()
             self._send_json(400, {"error": str(e)})
+
+    def _api_chat(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length)
+        body = json.loads(raw) if raw else {}
+        question = body.get("question", "")
+        report_data = body.get("report_data", {})
+        if not question or not report_data:
+            self._send_json(400, {"error": "question and report_data are required"})
+            return
+        try:
+            answer = ask_cohere(report_data, question)
+            self._send_json(200, {"answer": answer})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
 
     def _handle_process(self) -> None:
         print(f"[DEBUG] AppHandler._handle_process: ENTRY", flush=True)

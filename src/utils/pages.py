@@ -9,7 +9,7 @@ def render_home() -> str:
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Argus Vision | Video Analytics</title>
+<title>Argus Vision | Análisis de Video</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -116,9 +116,9 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div class="flex items-center gap-8">
 <h1 class="text-headline-md font-headline-md font-bold text-primary cursor-pointer" onclick="switchTab('dashboard')">Argus Vision</h1>
 <nav class="hidden md:flex gap-4">
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('fuentes')">Fuentes</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('dashboard')">Dashboard</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('jobs')">Jobs</a>
+    <a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('fuentes')">Fuentes</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('dashboard')">Panel</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('jobs')">Trabajos</a>
 <a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('logs')">Logs</a>
 </nav>
 </div>
@@ -128,7 +128,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <!-- SideNavBar -->
 <aside class="fixed left-0 top-16 bottom-0 w-64 bg-surface-container-low border-r border-outline-variant flex flex-col z-40">
 <div class="p-6 border-b border-outline-variant">
-<p class="text-label-caps font-label-caps text-secondary mb-1">SYSTEM OVERVIEW</p>
+<p class="text-label-caps font-label-caps text-secondary mb-1">RESUMEN DEL SISTEMA</p>
 <p class="text-body-sm font-body-sm text-on-surface-variant">V3.4.2-Stable</p>
 </div>
 <nav class="flex-1 py-4 overflow-y-auto">
@@ -138,25 +138,29 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </a>
 <a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="dashboard" onclick="switchTab('dashboard')">
 <span class="material-symbols-outlined" data-icon="videocam">videocam</span>
-<span class="text-label-caps font-label-caps">DASHBOARD</span>
+<span class="text-label-caps font-label-caps">PANEL</span>
 </a>
 <a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="jobs" onclick="switchTab('jobs')">
 <span class="material-symbols-outlined" data-icon="history">history</span>
-<span class="text-label-caps font-label-caps">JOBS</span>
+<span class="text-label-caps font-label-caps">TRABAJOS</span>
 </a>
 <a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="logs" onclick="switchTab('logs')">
 <span class="material-symbols-outlined" data-icon="terminal">terminal</span>
-<span class="text-label-caps font-label-caps">LOGS</span>
+<span class="text-label-caps font-label-caps">REGISTROS</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="chatbot" onclick="switchTab('chatbot')">
+<span class="material-symbols-outlined" data-icon="smart_toy">smart_toy</span>
+<span class="text-label-caps font-label-caps">CHATBOT</span>
 </a>
 </nav>
 <div class="p-4 bg-surface-container-lowest border-t border-outline-variant mt-auto">
 <button class="w-full bg-primary text-on-primary font-bold py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-primary-container transition-all" onclick="toggleAddSourceForm()">
 <span class="material-symbols-outlined" data-icon="add">add</span>
-<span class="text-body-md font-body-md">Add New Source</span>
+<span class="text-body-md font-body-md">Agregar Nueva Fuente</span>
 </button>
 <div class="mt-4 flex flex-col gap-2">
 <a class="text-on-surface-variant hover:text-primary text-body-sm font-body-sm flex items-center gap-2 cursor-pointer" onclick="switchTab('documentacion')">
-<span class="material-symbols-outlined" data-icon="help">help</span> Documentation
+<span class="material-symbols-outlined" data-icon="help">help</span> Documentación
 </a>
 </div>
 </div>
@@ -168,12 +172,12 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div id="tab-fuentes" class="tab-content">
 <div class="flex justify-between items-end mb-4">
 <div>
-<nav class="flex text-body-sm font-body-sm text-on-surface-variant gap-2 mb-2"><span>Sources</span></nav>
-<h2 class="text-headline-lg font-headline-lg">Video Sources</h2>
+<nav class="flex text-body-sm font-body-sm text-on-surface-variant gap-2 mb-2"><span>Fuentes</span></nav>
+<h2 class="text-headline-lg font-headline-lg">Fuentes de Video</h2>
 </div>
 <div class="flex items-center gap-3">
 <button class="bg-primary text-on-primary px-4 py-2 font-bold flex items-center gap-2 hover:bg-primary-container transition-all" onclick="toggleAddSourceForm()">
-<span class="material-symbols-outlined" data-icon="add">add</span> Add Source
+<span class="material-symbols-outlined" data-icon="add">add</span> Agregar Fuente
 </button>
 </div>
 </div>
@@ -188,25 +192,25 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 
 <div id="add-source-form" class="hidden bg-surface-container-lowest border border-outline-variant rounded-lg p-6 mt-4">
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-<input id="new-name" class="border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background md:col-span-2" placeholder="Source Name"/>
+<input id="new-name" class="border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background md:col-span-2" placeholder="Nombre de la Fuente"/>
 <select id="new-type" class="border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background" onchange="updateAddSourceMode()">
-<option value="file">FILE</option>
+<option value="file">ARCHIVO</option>
 <option value="youtube_vod">YOUTUBE VOD</option>
-<option value="youtube_live">YOUTUBE LIVE</option>
+<option value="youtube_live">YOUTUBE EN DIRECTO</option>
 <option value="rtsp">RTSP</option>
 </select>
-<input id="new-uri" class="border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background" placeholder="URI / path"/>
+<input id="new-uri" class="border border-outline-variant rounded-lg p-3 text-body-md font-body-md bg-background text-on-background" placeholder="URI / ruta"/>
 </div>
 <div id="file-upload-wrap" class="mt-4 hidden">
 <input type="file" id="new-file-input" accept="video/*" class="hidden"/>
-<div id="file-dropzone" class="border-2 border-dashed border-outline rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-all text-body-sm font-body-sm text-on-surface-variant" onclick="document.getElementById('new-file-input').click()">Drop a video here or click to choose one</div>
+<div id="file-dropzone" class="border-2 border-dashed border-outline rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-all text-body-sm font-body-sm text-on-surface-variant" onclick="document.getElementById('new-file-input').click()">Soltá un video acá o hacé clic para elegir uno</div>
 <div id="file-selected-name" class="text-body-sm font-body-sm text-primary mt-2"></div>
 </div>
 <div class="flex gap-3 mt-4">
 <button class="bg-primary text-on-primary px-6 py-2 font-bold flex items-center gap-2 hover:bg-primary-container transition-all" onclick="saveNewSource()">
-<span class="material-symbols-outlined" data-icon="save">save</span> Save
+<span class="material-symbols-outlined" data-icon="save">save</span> Guardar
 </button>
-<button class="border border-outline text-on-surface-variant px-6 py-2 font-bold hover:bg-surface-container transition-all" onclick="toggleAddSourceForm()">Cancel</button>
+<button class="border border-outline text-on-surface-variant px-6 py-2 font-bold hover:bg-surface-container transition-all" onclick="toggleAddSourceForm()">Cancelar</button>
 </div>
 <div id="add-source-error" class="text-error text-body-sm font-body-sm mt-2"></div>
 </div>
@@ -216,8 +220,8 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div class="max-w-container-max mx-auto">
 <section class="mb-8 flex justify-between items-end">
 <div>
-<h1 class="text-headline-lg font-headline-lg text-on-background">Dashboard</h1>
-<p class="text-body-md font-body-md text-outline">Resumen completo de metricas de analisis.</p>
+<h1 class="text-headline-lg font-headline-lg text-on-background">Panel</h1>
+<p class="text-body-md font-body-md text-outline">Resumen completo de métricas de análisis.</p>
 </div>
 <button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded font-bold hover:bg-primary-container transition-all" onclick="fetchDashboard()">
 <span class="material-symbols-outlined" style="font-size:18px">refresh</span> Actualizar
@@ -236,7 +240,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </div>
 </div>
 <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Top Areas (ROIs)</h4>
+<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Principales Áreas (ROIs)</h4>
 <div id="dash-roi-chart" class="space-y-3">
 <p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
 </div>
@@ -300,8 +304,8 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div class="max-w-container-max mx-auto">
 <section class="mb-8 flex justify-between items-end">
 <div>
-<h1 class="text-headline-lg font-headline-lg text-on-background">Jobs</h1>
-<p class="text-body-md font-body-md text-outline">All analysis jobs executed on the system.</p>
+<h1 class="text-headline-lg font-headline-lg text-on-background">Historial</h1>
+<p class="text-body-md font-body-md text-outline">Todos los análisis ejecutados en el sistema.</p>
 </div>
 <button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all" onclick="fetchSessions()">
 <span class="material-symbols-outlined" style="font-size:18px">refresh</span> Refresh
@@ -490,6 +494,35 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </div>
 </div>
 
+<div id="tab-chatbot" class="tab-content hidden">
+<div class="max-w-container-max mx-auto">
+<section class="mb-6">
+<h1 class="text-headline-lg font-headline-lg text-on-background">Chatbot de Análisis</h1>
+<p class="text-body-md font-body-md text-outline">Seleccioná un reporte y hace preguntas sobre sus datos.</p>
+</section>
+<div class="flex gap-6" style="height: calc(100vh - 220px);">
+<div class="w-1/3 flex flex-col bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
+<div class="px-4 py-3 border-b border-outline-variant flex items-center justify-between flex-shrink-0">
+<h3 class="text-label-caps font-label-caps text-secondary uppercase">Reportes</h3>
+<button class="text-primary text-body-sm font-body-sm hover:underline cursor-pointer" onclick="fetchChatReports()">Actualizar</button>
+</div>
+<div id="chat-reports-list" class="flex-1 overflow-y-auto p-2">
+<div class="text-center py-8 text-body-sm text-on-surface-variant">Cargando...</div>
+</div>
+</div>
+<div class="w-2/3 flex flex-col bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
+<div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3">
+<div class="text-center py-8 text-body-sm text-on-surface-variant">Seleccioná un reporte para empezar a chatear.</div>
+</div>
+<div class="p-4 border-t border-outline-variant flex gap-3 flex-shrink-0">
+<input id="chat-input" class="flex-1 border border-outline-variant rounded-lg px-3 py-2 text-body-md bg-background text-on-background" placeholder="Escribí tu pregunta..." disabled>
+<button id="chat-send-btn" class="bg-primary text-on-primary px-5 py-2 rounded-lg font-bold text-body-sm disabled:opacity-50 disabled:cursor-not-allowed" onclick="sendChatMessage()" disabled>Enviar</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+
 </main>
 
 <!-- DRAWER OVERLAY -->
@@ -498,13 +531,13 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <!-- DRAWER -->
 <aside id="drawer" class="fixed right-0 top-0 w-[520px] h-full z-50 bg-surface-container-lowest border-l border-outline-variant shadow-lg translate-x-full transition-transform duration-300 flex flex-col">
 <div class="flex items-center justify-between px-6 py-4 border-b border-outline-variant flex-shrink-0">
-<span id="drawer-title" class="text-headline-md font-headline-md font-bold text-on-surface">Source Name</span>
+<span id="drawer-title" class="text-headline-md font-headline-md font-bold text-on-surface">Nombre de la Fuente</span>
 <button onclick="closeDrawer()" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface cursor-pointer p-1">close</button>
 </div>
 <div class="flex border-b border-outline-variant flex-shrink-0">
-<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab active" data-dtab="preview" onclick="switchDrawerTab('preview')">Preview</button>
+<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab active" data-dtab="preview" onclick="switchDrawerTab('preview')">Vista Previa</button>
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="zonas" onclick="switchDrawerTab('zonas')">Zonas</button>
-<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="settings" onclick="switchDrawerTab('settings')">Analisis</button>
+<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="settings" onclick="switchDrawerTab('settings')">Análisis</button>
 </div>
 <div class="flex-1 overflow-y-auto p-6">
 <div id="dt-preview" class="dt-content">
@@ -512,10 +545,10 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <img id="preview-img" class="w-full rounded-lg aspect-video object-cover bg-surface-container" src="" alt="Preview"/>
 <canvas id="preview-canvas" class="absolute inset-0 w-full h-full cursor-crosshair rounded-lg"></canvas>
 </div>
-<button id="draw-area-btn" class="border border-primary text-primary px-4 py-2 font-bold hover:bg-surface-container transition-all text-body-sm font-body-sm" onclick="toggleDrawMode()">Draw Area</button>
+<button id="draw-area-btn" class="border border-primary text-primary px-4 py-2 font-bold hover:bg-surface-container transition-all text-body-sm font-body-sm" onclick="toggleDrawMode()">Dibujar Área</button>
 <div id="draw-actions" class="hidden flex gap-2 mt-2">
-<button class="bg-primary text-on-primary px-4 py-2 font-bold hover:bg-primary-container transition-all text-body-sm font-body-sm" onclick="savePolygon()">Save Area</button>
-<button class="border border-outline text-on-surface-variant px-4 py-2 font-bold hover:bg-surface-container transition-all text-body-sm font-body-sm" onclick="cancelDrawing()">Cancel</button>
+<button class="bg-primary text-on-primary px-4 py-2 font-bold hover:bg-primary-container transition-all text-body-sm font-body-sm" onclick="savePolygon()">Guardar Área</button>
+<button class="border border-outline text-on-surface-variant px-4 py-2 font-bold hover:bg-surface-container transition-all text-body-sm font-body-sm" onclick="cancelDrawing()">Cancelar</button>
 </div>
 </div>
 <div id="dt-zonas" class="dt-content hidden">
@@ -584,12 +617,12 @@ const roiColors = [
 
 // ── CLASS PROFILES (KISS: hardcoded, editable later) ──
 const CLASS_PROFILES = {
-  custom:     { name: 'Custom',     classes: [] },
-  retail:     { name: 'Retail',     classes: ['person','backpack','handbag','suitcase'] },
-  traffic:    { name: 'Traffic',    classes: ['person','bicycle','motorcycle','car','bus','truck'] },
-  security:   { name: 'Security',   classes: ['person','backpack','suitcase'] },
-  industrial: { name: 'Industrial', classes: ['person','truck'] },
-  all:        { name: 'Todas (80)', classes: [] }, // will be filled dynamically
+  custom:     { name: 'Personalizado', classes: [] },
+  retail:     { name: 'Comercio',      classes: ['person','backpack','handbag','suitcase'] },
+  traffic:    { name: 'Tráfico',       classes: ['person','bicycle','motorcycle','car','bus','truck'] },
+  security:   { name: 'Seguridad',     classes: ['person','backpack','suitcase'] },
+  industrial: { name: 'Industrial',    classes: ['person','truck'] },
+  all:        { name: 'Todas (80)',    classes: [] },
 };
 
 function getProfileClasses(profileKey) {
@@ -654,6 +687,7 @@ function switchTab(tab) {
   if (tab === 'dashboard') fetchDashboard();
   if (tab === 'jobs') fetchSessions();
   if (tab === 'logs') { fetchLogs(); }
+  if (tab === 'chatbot') { fetchChatReports(); }
 }
 
 function toggleAddSourceForm() {
@@ -667,11 +701,11 @@ function updateAddSourceMode() {
   const uriInput = document.getElementById('new-uri');
   const uploadWrap = document.getElementById('file-upload-wrap');
   if (type === 'file') {
-    uriInput.placeholder = 'Uploaded file path (auto)';
+    uriInput.placeholder = 'Ruta del archivo (automático)';
     uriInput.readOnly = true;
     uploadWrap.classList.remove('hidden');
   } else {
-    uriInput.placeholder = type === 'youtube_vod' ? 'https://www.youtube.com/watch?v=...' : type === 'youtube_live' ? 'YouTube Live URL' : 'rtsp://...';
+    uriInput.placeholder = type === 'youtube_vod' ? 'https://www.youtube.com/watch?v=...' : type === 'youtube_live' ? 'URL de YouTube en Directo' : 'rtsp://...';
     uriInput.readOnly = false;
     uploadWrap.classList.add('hidden');
   }
@@ -682,7 +716,7 @@ async function uploadSelectedFile(file) {
   form.append('file', file);
   const res = await fetch('/api/uploads', { method: 'POST', body: form });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  if (!res.ok) throw new Error(data.error || 'Subida fallida');
   return data.path;
 }
 
@@ -693,19 +727,19 @@ async function saveNewSource() {
   const errEl = document.getElementById('add-source-error');
   errEl.textContent = '';
 
-  if (!name) { errEl.textContent = 'Name is required'; return; }
-  if (!uri && type !== 'file') { errEl.textContent = 'URI is required'; return; }
+  if (!name) { errEl.textContent = 'El nombre es obligatorio'; return; }
+  if (!uri && type !== 'file') { errEl.textContent = 'La URI es obligatoria'; return; }
 
   try {
     if (type === 'file') {
       const fileInput = document.getElementById('new-file-input');
-      if (!pendingSourceFile && (!fileInput.files || !fileInput.files[0])) { errEl.textContent = 'Please select a file to upload'; return; }
+      if (!pendingSourceFile && (!fileInput.files || !fileInput.files[0])) { errEl.textContent = 'Seleccioná un archivo para subir'; return; }
       const file = pendingSourceFile || fileInput.files[0];
       const path = await uploadSelectedFile(file);
       uri = path;
     }
     const res = await fetchJSON('/api/sources', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name, source_type: type, source_uri: uri }) });
-    if (res.status >= 400) { errEl.textContent = res.data.error || 'Error creating source'; return; }
+    if (res.status >= 400) { errEl.textContent = res.data.error || 'Error al crear fuente'; return; }
     document.getElementById('add-source-form').classList.add('hidden');
     document.getElementById('new-name').value = '';
     document.getElementById('new-uri').value = '';
@@ -713,14 +747,14 @@ async function saveNewSource() {
     pendingSourceFile = null;
     document.getElementById('file-selected-name').textContent = '';
     fetchSources(true);
-  } catch (e) { errEl.textContent = 'Network error: ' + e.message; }
+  } catch (e) { errEl.textContent = 'Error de red: ' + e.message; }
 }
 
 function renderSources() {
   const grid = document.getElementById('sources-grid');
   const err = document.getElementById('sources-error');
   if (state.sources.length === 0) {
-    grid.innerHTML = '<div class="col-span-full text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No sources yet. Add your first video source.</p></div>';
+    grid.innerHTML = '<div class="col-span-full text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No hay fuentes aún. Agregá tu primera fuente de video.</p></div>';
     return;
   }
   grid.innerHTML = state.sources.map(s => {
@@ -740,7 +774,7 @@ function renderSources() {
       </div>
       <div class="flex items-center gap-4 text-body-sm font-body-sm text-on-surface-variant">
         <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">category</span> ${activeRois} area${activeRois !== 1 ? 's' : ''}</span>
-        <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px] ${s.frame_width ? 'text-primary' : ''}">${s.frame_width ? 'check_circle' : 'radio_button_unchecked'}</span> ${s.frame_width ? s.frame_width + 'x' + s.frame_height : 'No preview'}</span>
+        <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px] ${s.frame_width ? 'text-primary' : ''}">${s.frame_width ? 'check_circle' : 'radio_button_unchecked'}</span> ${s.frame_width ? s.frame_width + 'x' + s.frame_height : 'Sin previsualización'}</span>
       </div>
     </div>`;
   }).join('');
@@ -757,7 +791,7 @@ async function fetchSources(force) {
   const err = document.getElementById('sources-error');
   try {
     const res = await fetchJSON('/api/sources');
-    if (res.status >= 400) { err.classList.remove('hidden'); document.getElementById('sources-error-msg').textContent = res.data.error || 'Failed to load sources'; return; }
+    if (res.status >= 400) { err.classList.remove('hidden'); document.getElementById('sources-error-msg').textContent = res.data.error || 'Error al cargar fuentes'; return; }
     err.classList.add('hidden');
     _lastSourcesFetch = now;
     state.sources = res.data;
@@ -876,7 +910,7 @@ function drawCanvasDuringDrawMode() {
 
 function toggleDrawMode() {
   state.drawMode = !state.drawMode;
-  document.getElementById('draw-area-btn').textContent = state.drawMode ? 'Cancel Drawing' : 'Draw Area';
+  document.getElementById('draw-area-btn').textContent = state.drawMode ? 'Cancelar Dibujo' : 'Dibujar Área';
   if (state.drawMode) document.getElementById('draw-actions').classList.remove('hidden');
   else { document.getElementById('draw-actions').classList.add('hidden'); state.currentPolygon = []; drawExistingROIs(); }
 }
@@ -912,18 +946,18 @@ async function savePolygon() {
     if (res.status >= 400) { showToast('Error: ' + (res.data.error || 'Unknown'), 'error'); return; }
     state.drawMode = false; state.currentPolygon = [];
     document.getElementById('draw-actions').classList.add('hidden');
-    document.getElementById('draw-area-btn').textContent = 'Draw Area';
+    document.getElementById('draw-area-btn').textContent = 'Dibujar Área';
     await fetchSources(true);
     state.drawerTab = 'zonas';
     switchDrawerTab('zonas');
     renderDrawer();
-  } catch (e) { showToast('Network error: ' + e.message, 'error'); }
+  } catch (e) { showToast('Error de red: ' + e.message, 'error'); }
 }
 
 function cancelDrawing() {
   state.drawMode = false; state.currentPolygon = [];
   document.getElementById('draw-actions').classList.add('hidden');
-  document.getElementById('draw-area-btn').textContent = 'Draw Area';
+  document.getElementById('draw-area-btn').textContent = 'Dibujar Área';
   drawExistingROIs();
 }
 
@@ -933,7 +967,7 @@ function renderAreasTab() {
   const src = getSource(state.selectedSourceId);
   const container = document.getElementById('areas-list');
   if (!src || !src.rois || src.rois.length === 0) {
-    container.innerHTML = '<div class="text-center py-8"><p class="text-body-md font-body-md text-on-surface-variant">No areas defined. Draw one in Preview.</p></div>';
+    container.innerHTML = '<div class="text-center py-8"><p class="text-body-md font-body-md text-on-surface-variant">No hay áreas definidas. Dibujá una en Vista Previa.</p></div>';
     return;
   }
   container.innerHTML = src.rois.map(roi => {
@@ -946,10 +980,10 @@ function renderAreasTab() {
         </button>
       </summary>
       <div class="px-4 py-3 border-t border-outline-variant">
-        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_entry" ${roi.detect_entry ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Entry Detection</label>
-        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_exit" ${roi.detect_exit ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Exit Detection</label>
-        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_occupancy" ${roi.detect_occupancy ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Occupancy</label>
-        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_dwell" ${roi.detect_dwell ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Dwell Time</label>
+        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_entry" ${roi.detect_entry ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Detección de Entrada</label>
+        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_exit" ${roi.detect_exit ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Detección de Salida</label>
+        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_occupancy" ${roi.detect_occupancy ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Ocupación</label>
+        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_dwell" ${roi.detect_dwell ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Tiempo de Permanencia</label>
         <span id="config-msg-${eid}" class="text-body-sm font-body-sm text-primary"></span>
       </div>
     </details>`;
@@ -967,13 +1001,13 @@ async function saveROIConfig(roiId) {
     detect_occupancy: details.querySelector('.area-chk[data-field="detect_occupancy"]').checked,
     detect_dwell: details.querySelector('.area-chk[data-field="detect_dwell"]').checked,
   };
-  msgEl.textContent = 'Saving...';
+  msgEl.textContent = 'Guardando...';
   try {
     const res = await fetchJSON('/api/rois/' + roiId + '/config', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) });
-    msgEl.textContent = res.status === 200 ? 'Saved!' : 'Error';
+    msgEl.textContent = res.status === 200 ? '¡Guardado!' : 'Error';
     msgEl.style.color = res.status === 200 ? '#005d54' : '#ba1a1a';
     setTimeout(() => msgEl.textContent = '', 2000);
-  } catch (e) { msgEl.textContent = 'Network error'; msgEl.style.color = '#ba1a1a'; }
+  } catch (e) { msgEl.textContent = 'Error de red'; msgEl.style.color = '#ba1a1a'; }
 }
 
 // DELETE SOURCE / ROI
@@ -1174,7 +1208,7 @@ async function saveRuleForm(roiId, ruleId) {
     }
     if (res.status >= 400) { showToast('Error: ' + (res.data.error || 'Unknown'), 'error'); return; }
     renderRulesTab();
-  } catch (e) { showToast('Network error: ' + e.message, 'error'); }
+  } catch (e) { showToast('Error de red: ' + e.message, 'error'); }
 }
 
 function cancelRuleForm(roiId, ruleId) {
@@ -1250,7 +1284,7 @@ function renderSettingsTab() {
     </div>
     <div class="mb-6">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-label-caps font-label-caps text-on-surface-variant">TRACKING CLASSES <span class="text-body-sm font-body-sm">(${selected.length}/${classes.length})</span></h3>
+        <h3 class="text-label-caps font-label-caps text-on-surface-variant">CLASES DE SEGUIMIENTO <span class="text-body-sm font-body-sm">(${selected.length}/${classes.length})</span></h3>
         <div class="flex gap-1">
           <button onclick="onSelectAllClasses()" class="text-label-caps font-label-caps text-primary hover:underline">Todos</button>
           <span class="text-on-surface-variant">/</span>
@@ -1525,19 +1559,19 @@ function renderModal() {
 
   // Progress / result / error states unchanged
   if (state.modalState === 'progress') {
-    document.getElementById('modal-title').textContent = 'Processing';
-    body.innerHTML = '<div class="text-center py-6"><div class="spinner mx-auto"></div><p class="text-body-md font-body-md text-on-surface-variant mt-4">Processing video analysis...</p><div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div><p id="progress-text" class="text-body-sm font-body-sm text-on-surface-variant">Starting...</p></div>';
+    document.getElementById('modal-title').textContent = 'Procesando';
+    body.innerHTML = '<div class="text-center py-6"><div class="spinner mx-auto"></div><p class="text-body-md font-body-md text-on-surface-variant mt-4">Procesando análisis de video...</p><div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div><p id="progress-text" class="text-body-sm font-body-sm text-on-surface-variant">Iniciando...</p></div>';
     return;
   }
   if (state.modalState === 'result') {
-    document.getElementById('modal-title').textContent = 'Analysis Complete';
+    document.getElementById('modal-title').textContent = 'Análisis Completo';
     var sid = state.modalSessionId;
-    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-green-600">✓</div><h3 class="text-headline-md font-headline-md font-bold mb-2">Complete!</h3><p class="text-body-sm font-body-sm text-on-surface-variant">Session ID: ' + esc(sid) + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:brightness-110 transition-all" onclick="closeModal(); viewAnalysis(\'' + sid + '\')">View Report</button></div>';
+    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-green-600">✓</div><h3 class="text-headline-md font-headline-md font-bold mb-2">¡Completado!</h3><p class="text-body-sm font-body-sm text-on-surface-variant">ID de Sesión: ' + esc(sid) + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Cerrar</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:brightness-110 transition-all" onclick="closeModal(); viewAnalysis(\'' + sid + '\')">Ver Reporte</button></div>';
     return;
   }
   if (state.modalState === 'error') {
-    document.getElementById('modal-title').textContent = 'Analysis Failed';
-    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-error">✗</div><p class="text-body-md font-body-md text-error">' + esc(state.modalError || 'Unknown error') + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:bg-primary-container transition-all" onclick="openWizardStep1()">Retry</button></div>';
+    document.getElementById('modal-title').textContent = 'Análisis Fallido';
+    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-error">✗</div><p class="text-body-md font-body-md text-error">' + esc(state.modalError || 'Error desconocido') + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Cerrar</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:bg-primary-container transition-all" onclick="openWizardStep1()">Reintentar</button></div>';
     return;
   }
 
@@ -1550,69 +1584,69 @@ function renderModal() {
   const profile = settings.profile || 'custom';
   const selectedClasses = settings.tracking_classes || CLASS_PROFILES[profile]?.classes || ['person'];
 
-  document.getElementById('modal-title').textContent = (state.wizardStep === 1 ? '⚙ Configure Analysis' : '📋 Review & Run') + ' — ' + srcName;
+  document.getElementById('modal-title').textContent = (state.wizardStep === 1 ? '⚙ Configurar Análisis' : '📋 Revisar y Ejecutar') + ' — ' + srcName;
 
   if (state.wizardStep === 1) {
     body.innerHTML = `
       <div class="space-y-5">
         <div>
-          <label class="text-label-caps font-label-caps text-secondary uppercase mb-2 block">Class Profile</label>
+          <label class="text-label-caps font-label-caps text-secondary uppercase mb-2 block">Perfil de Clase</label>
           <select id="wiz-profile" class="w-full border border-outline-variant rounded-lg px-3 py-2.5 text-body-md font-body-md bg-surface-container-lowest text-on-surface" onchange="onWizProfileChange()">
             ${profileOptions}
           </select>
           <div id="wiz-classes" class="mt-3 flex flex-wrap gap-2"></div>
         </div>
         <div>
-          <label class="text-label-caps font-label-caps text-secondary uppercase mb-2 block">Metrics</label>
+          <label class="text-label-caps font-label-caps text-secondary uppercase mb-2 block">Métricas</label>
           <div class="grid grid-cols-2 gap-2">
             ${['entries','exits','occupancy','dwell_time'].map(m => {
               const checked = m === 'dwell_time' ? '' : 'checked';
-              const labels = {entries:'Entradas/Salidas', exits:'Salidas', occupancy:'Ocupación', dwell_time:'Dwell Time'};
+              const labels = {entries:'Entradas/Salidas', exits:'Salidas', occupancy:'Ocupación', dwell_time:'Tiempo de Permanencia'};
               return '<label class="flex items-center gap-2 border border-outline-variant rounded-lg px-3 py-2 cursor-pointer hover:bg-surface-container transition-colors"><input type="checkbox" ' + checked + ' class="wiz-metric" data-metric="' + m + '"><span class="text-body-sm font-body-sm">' + labels[m] + '</span></label>';
             }).join('')}
           </div>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="text-label-caps font-label-caps text-secondary uppercase mb-1 block">Max Seconds</label>
-            <input id="wiz-maxsec" type="number" min="0" step="10" class="w-full border border-outline-variant rounded-lg px-3 py-2 text-body-md" value="${settings.max_seconds || ''}" placeholder="0 = full video">
+            <label class="text-label-caps font-label-caps text-secondary uppercase mb-1 block">Máx. Segundos</label>
+            <input id="wiz-maxsec" type="number" min="0" step="10" class="w-full border border-outline-variant rounded-lg px-3 py-2 text-body-md" value="${settings.max_seconds || ''}" placeholder="0 = video completo">
             <p class="text-body-sm text-on-surface-variant mt-1">0 = video completo</p>
           </div>
           <div>
-            <label class="text-label-caps font-label-caps text-secondary uppercase mb-1 block">Frame Skip</label>
+            <label class="text-label-caps font-label-caps text-secondary uppercase mb-1 block">Salto de Frames</label>
             <select id="wiz-frameskip" class="w-full border border-outline-variant rounded-lg px-3 py-2.5 text-body-md bg-surface-container-lowest text-on-surface">
-              <option value="1" ${(settings.frame_skip||1)===1?'selected':''}>Every frame</option>
-              <option value="2" ${(settings.frame_skip||1)===2?'selected':''}>Every 2nd</option>
-              <option value="3" ${(settings.frame_skip||1)===3?'selected':''}>Every 3rd</option>
-              <option value="5" ${(settings.frame_skip||1)===5?'selected':''}>Every 5th (fast)</option>
+              <option value="1" ${(settings.frame_skip||1)===1?'selected':''}>Cada frame</option>
+              <option value="2" ${(settings.frame_skip||1)===2?'selected':''}>Cada 2do</option>
+              <option value="3" ${(settings.frame_skip||1)===3?'selected':''}>Cada 3ro</option>
+              <option value="5" ${(settings.frame_skip||1)===5?'selected':''}>Cada 5to (rápido)</option>
             </select>
           </div>
         </div>
         <div class="flex items-center gap-3">
           <input type="checkbox" id="wiz-annotated" class="w-4 h-4" ${settings.annotated_video !== false ? 'checked' : ''}>
-          <label for="wiz-annotated" class="text-body-sm font-body-sm">Generate annotated video</label>
+          <label for="wiz-annotated" class="text-body-sm font-body-sm">Generar video anotado</label>
         </div>
         <div class="flex gap-3 pt-4 border-t border-outline-variant">
-          <button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold rounded-lg hover:bg-surface-container transition-all" onclick="closeModal()">Cancel</button>
-          <button class="flex-1 bg-primary text-on-primary py-3 font-bold rounded-lg hover:bg-primary-container transition-all" onclick="wizNextStep()">Next →</button>
+          <button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold rounded-lg hover:bg-surface-container transition-all" onclick="closeModal()">Cancelar</button>
+          <button class="flex-1 bg-primary text-on-primary py-3 font-bold rounded-lg hover:bg-primary-container transition-all" onclick="wizNextStep()">Siguiente →</button>
         </div>
       </div>`;
     setTimeout(renderWizClasses, 0);
   } else {
     // Step 2 — Review
-    const metricsOn = ['Entries/Exits', 'Occupancy', 'Dwell Time'].filter((_, i) => ['entries','occupancy','dwell_time'][i] ? true : (settings.metrics || {}).entries !== false).join(', ');
+    const metricsOn = ['Entradas/Salidas', 'Ocupación', 'Tiempo de Permanencia'].filter((_, i) => ['entries','occupancy','dwell_time'][i] ? true : (settings.metrics || {}).entries !== false).join(', ');
     body.innerHTML = `
       <div class="space-y-3 mb-6">
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Source</span><span class="text-body-sm font-body-sm font-bold">${esc(srcName)}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Tracking Classes</span><span class="text-body-sm font-body-sm font-bold text-right max-w-[60%]">${(settings.tracking_classes||['person']).join(', ')}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Max Seconds</span><span class="text-body-sm font-body-sm font-bold">${settings.max_seconds ? settings.max_seconds + 's' : 'Video Completo'}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Frame Skip</span><span class="text-body-sm font-body-sm font-bold">Every ${settings.frame_skip||1} frame${(settings.frame_skip||1)>1?'s':''}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Annotated Video</span><span class="text-body-sm font-body-sm font-bold">${settings.annotated_video !== false ? 'Yes' : 'No'}</span></div>
-        <div class="flex justify-between py-2"><span class="text-body-sm font-body-sm text-on-surface-variant">ROIs (Areas)</span><span class="text-body-sm font-body-sm font-bold">${src&&src.rois?src.rois.length:0}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Fuente</span><span class="text-body-sm font-body-sm font-bold">${esc(srcName)}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Clases de Seguimiento</span><span class="text-body-sm font-body-sm font-bold text-right max-w-[60%]">${(settings.tracking_classes||['person']).join(', ')}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Máx. Segundos</span><span class="text-body-sm font-body-sm font-bold">${settings.max_seconds ? settings.max_seconds + 's' : 'Video Completo'}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Salto de Frames</span><span class="text-body-sm font-body-sm font-bold">Cada ${settings.frame_skip||1} frame${(settings.frame_skip||1)>1?'s':''}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Video Anotado</span><span class="text-body-sm font-body-sm font-bold">${settings.annotated_video !== false ? 'Sí' : 'No'}</span></div>
+        <div class="flex justify-between py-2"><span class="text-body-sm font-body-sm text-on-surface-variant">ROIs (Áreas)</span><span class="text-body-sm font-body-sm font-bold">${src&&src.rois?src.rois.length:0}</span></div>
       </div>
       <div class="flex gap-3">
-        <button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold rounded-lg hover:bg-surface-container transition-all" onclick="wizPrevStep()">← Back</button>
-        <button class="flex-1 bg-primary text-on-primary py-3 font-bold rounded-lg hover:bg-primary-container transition-all" onclick="startAnalysis()">Generate →</button>
+        <button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold rounded-lg hover:bg-surface-container transition-all" onclick="wizPrevStep()">← Atrás</button>
+        <button class="flex-1 bg-primary text-on-primary py-3 font-bold rounded-lg hover:bg-primary-container transition-all" onclick="startAnalysis()">Generar →</button>
       </div>`;
   }
 }
@@ -1690,7 +1724,7 @@ function startAnalysis() {
     output: { report: true, annotated_video: settings.annotated_video !== false }
   }) })
   .then(({status, data}) => {
-    if (status >= 400) { state.modalState = 'error'; state.modalError = data.error || 'Failed'; renderModal(); return; }
+    if (status >= 400) { state.modalState = 'error'; state.modalError = data.error || 'Fallido'; renderModal(); return; }
     state.pollingInterval = setInterval(pollJobStatus, 2000);
   }).catch(err => { state.modalState = 'error'; state.modalError = err.message; renderModal(); });
 }
@@ -1724,7 +1758,7 @@ async function fetchSessions() {
   try {
     const res = await fetchJSON('/api/sessions');
     if (res.status >= 400) {
-      if (errDiv) { errDiv.classList.remove('hidden'); document.getElementById('jobs-error-msg').textContent = res.data.error || 'Failed'; }
+      if (errDiv) { errDiv.classList.remove('hidden'); document.getElementById('jobs-error-msg').textContent = res.data.error || 'Fallido'; }
       container.innerHTML = '';
       return;
     }
@@ -1740,10 +1774,10 @@ function renderSessions() {
   const content = document.getElementById('jobs-content');
   if (!content) return;
   if (state.sessions.length === 0) {
-    content.innerHTML = '<div class="text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No jobs yet. Run an analysis from a source.</p></div>';
+    content.innerHTML = '<div class="text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No hay trabajos aún. Ejecutá un análisis desde una fuente.</p></div>';
     return;
   }
-  content.innerHTML = '<div class="overflow-x-auto bg-surface-container-lowest border border-outline-variant rounded-xl"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase bg-surface-container-low"><th class="px-4 py-4 font-medium">Source</th><th class="px-4 py-4 font-medium">Classes</th><th class="px-4 py-4 font-medium">Tracks</th><th class="px-4 py-4 font-medium">Events</th><th class="px-4 py-4 font-medium">Status</th><th class="px-4 py-4 font-medium">Date</th><th class="px-4 py-4 font-medium">Duration</th><th class="px-4 py-4 font-medium text-right">Actions</th></tr></thead><tbody class="divide-y divide-outline-variant">' + state.sessions.map(s => {
+  content.innerHTML = '<div class="overflow-x-auto bg-surface-container-lowest border border-outline-variant rounded-xl"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase bg-surface-container-low"><th class="px-4 py-4 font-medium">Fuente</th><th class="px-4 py-4 font-medium">Clases</th><th class="px-4 py-4 font-medium">Tracks</th><th class="px-4 py-4 font-medium">Eventos</th><th class="px-4 py-4 font-medium">Estado</th><th class="px-4 py-4 font-medium">Fecha</th><th class="px-4 py-4 font-medium">Duración</th><th class="px-4 py-4 font-medium text-right">Acciones</th></tr></thead><tbody class="divide-y divide-outline-variant">' + state.sessions.map(s => {
     const st = (s.status || 'completed').toLowerCase();
     let badge = st === 'completed'
       ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span>Completed</span>'
@@ -1751,15 +1785,13 @@ function renderSessions() {
         ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/10 text-error"><span class="w-1.5 h-1.5 bg-error rounded-full"></span>Failed</span>'
         : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"><span class="mini-spinner mr-1"></span>Running</span>';
     const clsStr = s.tracking_classes ? (Array.isArray(s.tracking_classes) ? s.tracking_classes.join(', ') : s.tracking_classes) : '-';
-    const actions = st === 'completed'
-      ? '<div class="flex gap-2 justify-end"><a href="/api/sessions/' + esc(s.id) + '/report" target="_blank" class="bg-primary text-on-primary text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:brightness-110 transition-all" style="text-decoration:none">Report</a><button class="border border-outline text-outline text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:bg-surface-container transition-all" onclick="reRunAnalysis(\'' + esc(s.id) + '\')">Re-run</button></div>'
-      : '<div class="flex gap-2 justify-end"><button class="border border-outline text-outline text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:bg-surface-container transition-all" onclick="viewAnalysis(\'' + esc(s.id) + '\')">Details</button></div>';
+    const actions = '<div class="flex gap-2 justify-end"><button class="bg-primary text-on-primary text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:brightness-110 transition-all" onclick="viewAnalysis(\'' + esc(s.id) + '\')">Ver detalle</button><button class="border border-outline text-outline text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:bg-surface-container transition-all" onclick="reRunAnalysis(\'' + esc(s.id) + '\')">Re-ejecutar</button></div>';
     return '<tr class="hover:bg-surface-container/50 transition-colors"><td class="px-4 py-4 text-body-md font-body-md text-on-surface">' + esc(s.source_name || '-') + '</td><td class="px-4 py-4 text-body-sm text-on-surface-variant max-w-[120px] truncate">' + esc(clsStr) + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-on-surface-variant">' + (s.total_entities != null ? s.total_entities : '-') + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-on-surface-variant">' + (s.total_events != null ? s.total_events : '-') + '</td><td class="px-4 py-4">' + badge + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-outline">' + formatDate(s.started_at) + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-outline">' + formatDuration(s.duration_seconds) + '</td><td class="px-4 py-4">' + actions + '</td></tr>';
   }).join('') + '</tbody></table></div>';
 }
 
 function reRunAnalysis(sessionId) {
-  showToast('Re-running analysis...', 'info');
+  showToast('Re-ejecutando análisis...', 'info');
   const session = state.sessions.find(s => s.id === sessionId);
   if (session) {
     state.modalSourceId = session.source_id;
@@ -1767,7 +1799,7 @@ function reRunAnalysis(sessionId) {
     state.wizardStep = 1;
     renderModal();
   } else {
-    showToast('Session not found', 'error');
+    showToast('Sesión no encontrada', 'error');
   }
 }
 
@@ -1788,7 +1820,7 @@ async function fetchOccupancyTrends() {
     const res = await fetch('/api/analytics/occupancy-trends');
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) {
-      container.innerHTML = '<div class="w-full text-center py-8 text-body-sm font-body-sm text-on-surface-variant">No occupancy data for the last 24h</div>';
+      container.innerHTML = '<div class="w-full text-center py-8 text-body-sm font-body-sm text-on-surface-variant">Sin datos de ocupación en las últimas 24h</div>';
       return;
     }
     const maxVal = Math.max(...data.map(d => d.avg_occupancy), 1);
@@ -1799,11 +1831,11 @@ async function fetchOccupancyTrends() {
       const isPeak = d.avg_occupancy === maxVal;
       return '<div class="flex-1 flex flex-col items-center gap-1 h-full justify-end">' +
         '<span class="text-data-mono font-data-mono text-primary text-[10px]">' + d.avg_occupancy + '</span>' +
-        '<div class="w-full rounded-t-sm transition-all ' + (isPeak ? 'bg-primary' : 'bg-primary/30 hover:bg-primary/50') + '" style="height:' + h + '%" title="' + label + ' - ' + d.avg_occupancy + ' people"></div>' +
+        '<div class="w-full rounded-t-sm transition-all ' + (isPeak ? 'bg-primary' : 'bg-primary/30 hover:bg-primary/50') + '" style="height:' + h + '%" title="' + label + ' - ' + d.avg_occupancy + ' personas"></div>' +
         '<span class="text-[9px] text-outline truncate w-full text-center">' + label + '</span></div>';
     }).join('');
   } catch (e) {
-    container.innerHTML = '<div class="w-full text-center py-8 text-body-sm font-body-sm text-error">Failed to load trends</div>';
+    container.innerHTML = '<div class="w-full text-center py-8 text-body-sm font-body-sm text-error">Error al cargar tendencias</div>';
   }
 }
 
@@ -1814,7 +1846,7 @@ async function fetchDwellTimes() {
     const res = await fetch('/api/analytics/dwell-times');
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) {
-      container.innerHTML = '<div class="text-center py-8"><p class="text-body-sm font-body-sm text-on-surface-variant">No dwell time data yet. Run an analysis with Dwell Time enabled.</p></div>';
+      container.innerHTML = '<div class="text-center py-8"><p class="text-body-sm font-body-sm text-on-surface-variant">Sin datos de permanencia aún. Ejecutá un análisis con Tiempo de Permanencia activado.</p></div>';
       return;
     }
     const maxVal = Math.max(...data.map(d => d.avg_dwell_seconds), 1);
@@ -1829,11 +1861,11 @@ async function fetchDwellTimes() {
         '</div>';
     }).join('');
   } catch (e) {
-    container.innerHTML = '<div class="text-center py-8"><p class="text-body-sm font-body-sm text-error">Failed to load dwell times</p></div>';
+    container.innerHTML = '<div class="text-center py-8"><p class="text-body-sm font-body-sm text-error">Error al cargar tiempos de permanencia</p></div>';
   }
 }
 
-function exportReport() { showToast('Export feature coming soon', 'info'); }
+function exportReport() { showToast('Función de exportación próximamente', 'info'); }
 
 // LOGS SIMULATION
 async function fetchLogs() {
@@ -1934,6 +1966,14 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   // Initial load
   fetchSources(true);
+
+  // Chat Enter key
+  var chatInput = document.getElementById('chat-input');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+    });
+  }
 });
 
 async function fetchDashboard() {
@@ -1987,7 +2027,7 @@ function renderDashAlertsSeverity(d) {
     return;
   }
   const severityMap = { critical: {label: 'Criticas', color: 'bg-red-100 text-red-700', bar: 'bg-red-500', icon: 'error'},
-    warning: {label: 'Warning', color: 'bg-amber-100 text-amber-700', bar: 'bg-amber-500', icon: 'warning'},
+    warning: {label: 'Advertencia', color: 'bg-amber-100 text-amber-700', bar: 'bg-amber-500', icon: 'warning'},
     info: {label: 'Info', color: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500', icon: 'info'} };
   const colors = ['red','amber','blue'];
   let i = 0;
@@ -2309,7 +2349,7 @@ async function viewAnalysis(id) {
       }
     }
     var metricsTable = metricsRows
-      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 mb-6"><h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Metricas por Area (ROI)</h4><div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">ROI</th><th class="p-3 font-medium text-center">Entradas</th><th class="p-3 font-medium text-center">Salidas</th><th class="p-3 font-medium text-center">Pico</th><th class="p-3 font-medium text-center">Dwell Avg</th></tr></thead><tbody>' + metricsRows + '</tbody></table></div></div>'
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 mb-6"><h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Métricas por Área (ROI)</h4><div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">ROI</th><th class="p-3 font-medium text-center">Entradas</th><th class="p-3 font-medium text-center">Salidas</th><th class="p-3 font-medium text-center">Pico</th><th class="p-3 font-medium text-center">Prom. Perm.</th></tr></thead><tbody>' + metricsRows + '</tbody></table></div></div>'
       : '';
 
     // ── Individual event log ──
@@ -2333,7 +2373,7 @@ async function viewAnalysis(id) {
     }
 
     var eventSection = eventRows
-      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-4"><h4 class="text-label-caps font-label-caps text-secondary uppercase">Registro de Eventos</h4><span class="text-body-sm text-on-surface-variant">' + data.zone_events.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">Hora</th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Area</th><th class="p-3 font-medium">Track ID</th><th class="p-3 font-medium">Frame</th><th class="p-3 font-medium text-right">Dwell</th></tr></thead><tbody>' + eventRows + '</tbody></table></div></div>'
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-4"><h4 class="text-label-caps font-label-caps text-secondary uppercase">Registro de Eventos</h4><span class="text-body-sm text-on-surface-variant">' + data.zone_events.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">Hora</th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Área</th><th class="p-3 font-medium">ID Track</th><th class="p-3 font-medium">Frame</th><th class="p-3 font-medium text-right">Perm.</th></tr></thead><tbody>' + eventRows + '</tbody></table></div></div>'
       : '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><p class="text-body-sm text-on-surface-variant text-center py-4">Sin eventos registrados para este analisis.</p></div>';
 
     var detailHtml = headerHtml + infoHtml + metricsTable + eventSection;
@@ -2354,6 +2394,121 @@ async function viewAnalysis(id) {
   } catch (e) {
     console.error('viewAnalysis error', e);
   }
+}
+
+// ── Chatbot ──
+
+var chatSelectedReportId = null;
+var chatReportData = null;
+var chatMessages = [];
+
+function fetchChatReports() {
+  var container = document.getElementById('chat-reports-list');
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-8 text-body-sm text-on-surface-variant"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm">Cargando...</p></div>';
+  fetch('/api/analyses').then(function(r) { return r.json(); }).then(function(data) {
+    var list = Array.isArray(data) ? data : (data.analyses || []);
+    if (list.length === 0) {
+      container.innerHTML = '<div class="text-center py-8 text-body-sm text-on-surface-variant">No hay reportes disponibles.</div>';
+      return;
+    }
+    container.innerHTML = '<div class="space-y-1">' + list.map(function(s) {
+      var date = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
+      var sel = s.id === chatSelectedReportId ? 'border-primary bg-primary/5' : 'border-transparent';
+      return '<div class="px-3 py-2.5 rounded-lg border cursor-pointer hover:bg-surface-container transition-colors text-body-sm ' + sel + '" data-id="' + s.id + '" onclick="selectChatReport(\'' + s.id + '\',\'' + esc(s.source_name || '') + '\')">' +
+        '<div class="font-bold text-on-surface truncate">' + esc(s.source_name || '-') + '</div>' +
+        '<div class="text-on-surface-variant text-xs mt-0.5">' + date + ' &middot; ' + formatDuration(s.duration_seconds) + '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  }).catch(function() {
+    container.innerHTML = '<div class="text-center py-8 text-body-sm text-error">Error al cargar reportes.</div>';
+  });
+}
+
+function selectChatReport(id, name) {
+  chatSelectedReportId = id;
+  chatReportData = null;
+  chatMessages = [];
+  document.getElementById('chat-messages').innerHTML = '<div class="text-center py-4 text-body-sm text-on-surface-variant">Cargando datos del reporte...</div>';
+  document.getElementById('chat-input').disabled = true;
+  document.getElementById('chat-send-btn').disabled = true;
+  fetchChatReports(); // re-render to update highlight
+  fetch('/api/analyses/' + id).then(function(r) { return r.json(); }).then(function(data) {
+    // Remove video/streaming data to keep context lean
+    delete data.output_video_path;
+    chatReportData = data;
+    document.getElementById('chat-input').disabled = false;
+    document.getElementById('chat-send-btn').disabled = false;
+    document.getElementById('chat-input').focus();
+    document.getElementById('chat-messages').innerHTML =
+      '<div class="flex items-start gap-3"><div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-primary" style="font-size:18px">smart_toy</span></div><div class="bg-surface-container rounded-xl px-4 py-3 text-body-sm text-on-surface max-w-[80%]"><p class="font-bold text-primary text-xs mb-1">Argus Vision AI</p><p>Reporte seleccionado: <strong>' + esc(name) + '</strong>. Haceme preguntas sobre los datos del análisis.</p></div></div>';
+  }).catch(function() {
+    document.getElementById('chat-messages').innerHTML = '<div class="text-center py-4 text-body-sm text-error">Error al cargar el reporte.</div>';
+  });
+}
+
+function sendChatMessage() {
+  var input = document.getElementById('chat-input');
+  var question = input.value.trim();
+  if (!question || !chatReportData) return;
+
+  // Add user message
+  var container = document.getElementById('chat-messages');
+  container.innerHTML += '<div class="flex items-start gap-3 justify-end"><div class="bg-primary rounded-xl px-4 py-3 text-body-sm text-on-primary max-w-[80%]">' + esc(question) + '</div></div>';
+  input.value = '';
+  input.disabled = true;
+  document.getElementById('chat-send-btn').disabled = true;
+  container.scrollTop = container.scrollHeight;
+
+  // Loading indicator
+  container.innerHTML += '<div class="flex items-start gap-3" id="chat-loading"><div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-primary" style="font-size:18px">smart_toy</span></div><div class="bg-surface-container rounded-xl px-4 py-3 text-body-sm text-on-surface-variant"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div></div></div>';
+  container.scrollTop = container.scrollHeight;
+
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ question: question, report_data: chatReportData }),
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    var loading = document.getElementById('chat-loading');
+    if (loading) loading.remove();
+    if (data.error) {
+      container.innerHTML += '<div class="flex items-start gap-3"><div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-primary" style="font-size:18px">smart_toy</span></div><div class="bg-error-container rounded-xl px-4 py-3 text-body-sm text-error max-w-[80%]">Error: ' + esc(data.error) + '</div></div>';
+    } else {
+      // AI response with typewriter effect
+      var bubble = document.createElement('div');
+      bubble.className = 'flex items-start gap-3';
+      bubble.innerHTML = '<div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-primary" style="font-size:18px">smart_toy</span></div><div class="bg-surface-container rounded-xl px-4 py-3 text-body-sm text-on-surface max-w-[80%]" id="chat-ai-bubble"><p class="font-bold text-primary text-xs mb-1">Argus Vision AI</p><span id="chat-typing-text"></span><span id="chat-typing-cursor" class="animate-pulse text-primary font-bold">|</span></div>';
+      container.appendChild(bubble);
+      var textEl = document.getElementById('chat-typing-text');
+      var cursorEl = document.getElementById('chat-typing-cursor');
+      var answer = data.answer || '(sin respuesta)';
+      var i = 0;
+      (function typeNext() {
+        if (i < answer.length) {
+          textEl.textContent += answer.charAt(i);
+          i++;
+          container.scrollTop = container.scrollHeight;
+          var ch = answer.charAt(i-1);
+          var delay = ch === '\n' ? 60 : Math.random() * 15 + 10;
+          setTimeout(typeNext, delay);
+        } else {
+          if (cursorEl) cursorEl.remove();
+          textEl.innerHTML = esc(answer).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>').replace(/\n/g, '<br>');
+        }
+      })();
+    }
+    container.scrollTop = container.scrollHeight;
+    input.disabled = false;
+    document.getElementById('chat-send-btn').disabled = false;
+    input.focus();
+  }).catch(function(e) {
+    var loading = document.getElementById('chat-loading');
+    if (loading) loading.remove();
+    container.innerHTML += '<div class="flex items-start gap-3"><div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-primary" style="font-size:18px">smart_toy</span></div><div class="bg-error-container rounded-xl px-4 py-3 text-body-sm text-error max-w-[80%]">Error de red: ' + e.message + '</div></div>';
+    container.scrollTop = container.scrollHeight;
+    input.disabled = false;
+    document.getElementById('chat-send-btn').disabled = false;
+  });
 }
 
 </script>
