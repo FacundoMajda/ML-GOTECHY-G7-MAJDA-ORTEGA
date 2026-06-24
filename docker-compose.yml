@@ -13,7 +13,7 @@ services:
     volumes:
       - app_outputs:/app/outputs
       - app_reports:/app/reports
-      - app_uploads:/app/uploads
+      - ./uploads:/app/uploads
     restart: unless-stopped
 
   dozzle:
@@ -29,4 +29,3 @@ services:
 volumes:
   app_outputs:
   app_reports:
-  app_uploads:
