@@ -235,6 +235,77 @@ class MetricsService:
             for row in hourly_raw
         ]
 
+        # ── 12. Active alerts (rule-triggered events in last 24h) ──
+        active_alerts = execute_query(
+            """
+            SELECT COUNT(*) FROM zone_event
+            WHERE metadata IS NOT NULL
+              AND metadata::jsonb ? 'rule_id'
+              AND occurred_at >= NOW() - INTERVAL '24 hours'
+            """, fetch="one",
+        )
+        active_alert_count = active_alerts[0] if active_alerts else 0
+
+        # ── 13. Alerts by severity ──
+        sev_raw = execute_query(
+            """
+            SELECT metadata->>'severity', COUNT(*)
+            FROM zone_event
+            WHERE metadata IS NOT NULL
+              AND metadata::jsonb ? 'rule_id'
+              AND occurred_at >= NOW() - INTERVAL '7 days'
+            GROUP BY metadata->>'severity'
+            """, fetch="all",
+        )
+        alerts_by_severity = {row[0]: row[1] for row in sev_raw} if sev_raw else {}
+
+        # ── 14. Class distribution (top 10) ──
+        cls_raw = execute_query(
+            """
+            SELECT object_class, COUNT(*) AS cnt
+            FROM zone_event
+            GROUP BY object_class
+            ORDER BY cnt DESC
+            LIMIT 10
+            """, fetch="all",
+        )
+        class_distribution = [
+            {"class": row[0], "count": row[1]} for row in cls_raw
+        ] if cls_raw else []
+
+        # ── 15. Alerts timeline (last 20 rule-triggered events) ──
+        tl_raw = execute_query(
+            """
+            SELECT id::text, roi_id, event_type, occurred_at, object_class, metadata
+            FROM zone_event
+            WHERE metadata IS NOT NULL
+              AND metadata::jsonb ? 'rule_id'
+            ORDER BY occurred_at DESC
+            LIMIT 20
+            """, fetch="all",
+        )
+        alerts_timeline = []
+        for row in tl_raw or []:
+            md = row[5]
+            if isinstance(md, str):
+                import json
+                try:
+                    md = json.loads(md)
+                except (json.JSONDecodeError, TypeError):
+                    md = {}
+            elif md is None:
+                md = {}
+            alerts_timeline.append({
+                "id": row[0],
+                "roi_id": row[1],
+                "event_type": row[2],
+                "occurred_at": row[3].isoformat() if row[3] else None,
+                "object_class": row[4],
+                "severity": (md or {}).get("severity", "info"),
+                "rule_name": (md or {}).get("rule_name", ""),
+                "value": (md or {}).get("value"),
+            })
+
         return {
             "total_entries": total_entries,
             "total_exits": total_exits,
@@ -252,6 +323,10 @@ class MetricsService:
             "events_by_source": events_by_source,
             "recent_sessions": recent_sessions,
             "hourly_distribution": hourly_distribution,
+            "active_alerts": active_alert_count,
+            "alerts_by_severity": alerts_by_severity,
+            "class_distribution": class_distribution,
+            "alerts_timeline": alerts_timeline,
         }
 
     def get_trend(self, roi_id: uuid.UUID) -> list:

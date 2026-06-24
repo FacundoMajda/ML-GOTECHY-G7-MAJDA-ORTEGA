@@ -19,6 +19,7 @@ class ROIConfig:
     detect_occupancy: bool = True
     detect_dwell: bool = False
     alerts: list = field(default_factory=list)  # list[dict] — JSONB from DB
+    observed_classes: list = field(default_factory=lambda: ["person"])  # COCO class names this ROI counts
 
 
 @dataclass

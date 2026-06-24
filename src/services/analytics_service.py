@@ -76,7 +76,7 @@ class EntityState:
 class CounterEngine:
     SNAPSHOT_INTERVAL = 30  # frames entre snapshots de occupancia
 
-    def __init__(self, roi_configs: list[ROIConfig]):
+    def __init__(self, roi_configs: list[ROIConfig], alert_rules_by_roi: dict | None = None):
         self.roi_configs = {r.id: r for r in roi_configs}
         self.roi_polygons = {
             r.id: np.array(r.polygon, dtype=np.int32) for r in roi_configs
@@ -94,6 +94,8 @@ class CounterEngine:
         self.events: list[ZoneEventRecord] = []
         self.snapshots: list[OccupancySnapshot] = []
         self._frame_index = 0
+        # Rule engine: per-ROI active alert rules (read from alert_rule table)
+        self._alert_rules_by_roi: dict[str, list[dict]] = alert_rules_by_roi or {}
 
     @staticmethod
     def _orientation(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
@@ -179,6 +181,13 @@ class CounterEngine:
 
         # Check each ROI
         for roi_id, roi in self.roi_configs.items():
+            # KISS: only count this class in this ROI if it's observed
+            # (object_class comes from YOLO; ROI.observed_classes is the filter)
+            if object_class not in roi.observed_classes:
+                # still update state so it doesn't get "stuck" if class changes
+                self.zone_state[roi_id][track_id] = False
+                self.entity_states[track_id].inside_rois[roi_id] = False
+                continue
             inside = self.is_inside(roi_id, foot_left, foot_right)
             prev = self.zone_state[roi_id].get(track_id)
 
@@ -231,8 +240,11 @@ class CounterEngine:
         for roi_id in self.roi_configs:
             if not self.roi_configs[roi_id].detect_occupancy:
                 continue
+            observed = self.roi_configs[roi_id].observed_classes
             inside_ids = [
-                tid for tid, inside in self.zone_state[roi_id].items() if inside
+                tid for tid, inside in self.zone_state[roi_id].items()
+                if inside and tid in self.entity_states
+                and self.entity_states[tid].object_class in observed
             ]
             class_counts: dict[str, int] = {}
             for tid in inside_ids:
@@ -252,6 +264,20 @@ class CounterEngine:
                     object_class_counts=class_counts,
                 )
             )
+            # ── Rule engine: emit alert events for matching alert_rules ──
+            rules = self._alert_rules_by_roi.get(roi_id) or []
+            if rules:
+                from src.services.rule_evaluator import RuleEvaluator
+                evalr = RuleEvaluator(roi_id, rules)
+                triggered = evalr.evaluate(
+                    timestamp=timestamp,
+                    frame_index=self._frame_index,
+                    class_counts=class_counts,
+                    current_occupancy=len(inside_ids),
+                )
+                if triggered:
+                    print(f"[DEBUG] CounterEngine._take_snapshot: {len(triggered)} rule events triggered for roi={roi_id}", flush=True)
+                    self.events.extend(triggered)
         print(f"[DEBUG] CounterEngine._take_snapshot: added {len(self.roi_configs)} snapshots, total={len(self.snapshots)}", flush=True)
 
     def get_tracked_entities(self) -> list[TrackedEntityRecord]:
@@ -476,7 +502,16 @@ class AnalyticsService:
     ) -> SessionResult:
         print(f"[DEBUG] AnalyticsService.process: ENTRY write_video={write_video} tracking_classes={tracking_classes} frame_skip={frame_skip} max_seconds={max_seconds} provider={type(self.provider).__name__}", flush=True)
         model = _get_model()
-        engine = CounterEngine(self.roi_configs)
+        # Load active alert_rules per ROI for the rule engine
+        alert_rules_by_roi: dict[str, list[dict]] = {}
+        try:
+            from src.repositories.alert_rule_repo import AlertRuleRepository
+            alert_repo = AlertRuleRepository()
+            for roi in self.roi_configs:
+                alert_rules_by_roi[roi.id] = alert_repo.list_active(roi.id)
+        except Exception as e:
+            print(f"[WARN] AnalyticsService.process: failed to load alert rules: {e}", flush=True)
+        engine = CounterEngine(self.roi_configs, alert_rules_by_roi=alert_rules_by_roi)
 
         out_path = None
         writer = None

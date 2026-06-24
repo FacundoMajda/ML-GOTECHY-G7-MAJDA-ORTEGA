@@ -178,7 +178,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div id="sources-error" class="hidden bg-error-container border border-error rounded-lg p-4 mb-4 flex items-center gap-3">
 <span class="material-symbols-outlined text-error" data-icon="error">error</span>
 <span id="sources-error-msg" class="flex-1 text-body-md font-body-md text-on-error-container"></span>
-<button class="text-label-caps font-label-caps text-on-error-container font-bold hover:underline" onclick="fetchSources()">Retry</button>
+<button class="text-label-caps font-label-caps text-on-error-container font-bold hover:underline" onclick="fetchSources(true)">Retry</button>
 </div>
 
 <div id="sources-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
@@ -258,6 +258,31 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </div>
 </div>
 <div class="h-40 w-full" id="dash-hourly-chart">
+<p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
+</div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
+<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Alertas por Severidad</h4>
+<div id="dash-alerts-severity">
+<p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
+<h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Distribucion por Clase</h4>
+<div id="dash-class-distribution">
+<p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
+</div>
+</div>
+</div>
+
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-8">
+<div class="flex items-center justify-between mb-4">
+<h4 class="text-label-caps font-label-caps text-secondary uppercase">Timeline de Alertas</h4>
+<span class="text-body-sm font-body-sm text-on-surface-variant">Ultimas 20 alertas disparadas por reglas</span>
+</div>
+<div id="dash-alerts-timeline">
 <p class="text-body-sm text-on-surface-variant text-center py-8">Cargando...</p>
 </div>
 </div>
@@ -477,6 +502,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab active" data-dtab="preview" onclick="switchDrawerTab('preview')">Preview</button>
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="areas" onclick="switchDrawerTab('areas')">Areas</button>
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="settings" onclick="switchDrawerTab('settings')">Settings</button>
+<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="rules" onclick="switchDrawerTab('rules')">Reglas</button>
 </div>
 <div class="flex-1 overflow-y-auto p-6">
 <div id="dt-preview" class="dt-content">
@@ -495,6 +521,9 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </div>
 <div id="dt-settings" class="dt-content hidden">
 <div id="settings-content"></div>
+</div>
+<div id="dt-rules" class="dt-content hidden">
+<div id="rules-list"></div>
 </div>
 </div>
 <div class="p-4 border-t border-outline-variant flex-shrink-0">
@@ -640,7 +669,7 @@ async function saveNewSource() {
     document.getElementById('new-type').value = 'file';
     pendingSourceFile = null;
     document.getElementById('file-selected-name').textContent = '';
-    fetchSources();
+    fetchSources(true);
   } catch (e) { errEl.textContent = 'Network error: ' + e.message; }
 }
 
@@ -674,16 +703,22 @@ function renderSources() {
   }).join('');
 }
 
-async function fetchSources() {
+let _lastSourcesFetch = 0;
+
+async function fetchSources(force) {
+  const now = Date.now();
+  if (!force && state.sources && state.sources.length > 0 && (now - _lastSourcesFetch) < 5000) {
+    renderSources();
+    return;
+  }
   const err = document.getElementById('sources-error');
   try {
     const res = await fetchJSON('/api/sources');
     if (res.status >= 400) { err.classList.remove('hidden'); document.getElementById('sources-error-msg').textContent = res.data.error || 'Failed to load sources'; return; }
     err.classList.add('hidden');
+    _lastSourcesFetch = now;
     state.sources = res.data;
     renderSources();
-    // Re-fetch with ROIs for previews
-    await fetch('/api/sources').then(r => r.json()).then(data => { state.sources = data; renderSources(); });
   } catch (e) { err.classList.remove('hidden'); document.getElementById('sources-error-msg').textContent = e.message; }
 }
 
@@ -753,6 +788,7 @@ function showDrawerTab(tab) {
   if (el) el.classList.remove('hidden');
   if (tab === 'areas') renderAreasTab();
   if (tab === 'settings') renderSettingsTab();
+  if (tab === 'rules') renderRulesTab();
 }
 
 function drawExistingROIs() {
@@ -835,7 +871,7 @@ async function savePolygon() {
     state.drawMode = false; state.currentPolygon = [];
     document.getElementById('draw-actions').classList.add('hidden');
     document.getElementById('draw-area-btn').textContent = 'Draw Area';
-    await fetchSources();
+    await fetchSources(true);
     state.drawerTab = 'areas';
     switchDrawerTab('areas');
     renderDrawer();
@@ -910,7 +946,7 @@ async function deleteSource(id, name) {
       return;
     }
     if (state.selectedSourceId === id) closeDrawer();
-    fetchSources();
+    fetchSources(true);
   } catch (e) { alert('Error de red: ' + e.message); }
 }
 
@@ -928,6 +964,223 @@ async function deleteROI(id, name) {
     renderAreasTab();
   } catch (e) { alert('Error de red: ' + e.message); }
 }
+
+// RULES TAB
+
+let rulesCache = {};
+
+async function fetchRules(roiId) {
+  try {
+    const res = await fetchJSON('/api/rois/' + roiId + '/alert-rules');
+    if (res.status >= 400) return [];
+    return res.data;
+  } catch (e) { return []; }
+}
+
+async function fetchAllRules() {
+  const src = getSource(state.selectedSourceId);
+  if (!src || !src.rois) return;
+  for (const roi of src.rois) {
+    rulesCache[roi.id] = await fetchRules(roi.id);
+  }
+}
+
+async function renderRulesTab() {
+  await fetchAllRules();
+  const src = getSource(state.selectedSourceId);
+  const container = document.getElementById('rules-list');
+  if (!src || !src.rois || src.rois.length === 0) {
+    container.innerHTML = '<div class="text-center py-8"><p class="text-body-md font-body-md text-on-surface-variant">No areas defined. Create one in Preview first.</p></div>';
+    return;
+  }
+  container.innerHTML = src.rois.map(roi => {
+    const eid = esc(roi.id);
+    const rules = rulesCache[roi.id] || [];
+    return `<details class="border border-outline-variant rounded-lg mb-3 overflow-hidden bg-surface-container-low">
+      <summary class="flex items-center justify-between px-4 py-3 cursor-pointer font-bold text-body-md font-body-md hover:bg-surface-container transition-colors">
+        <span>${esc(roi.name)} <span class="text-body-sm font-body-sm text-on-surface-variant">(${rules.length} reglas)</span></span>
+        <span class="material-symbols-outlined text-on-surface-variant" style="font-size:16px">expand_more</span>
+      </summary>
+      <div class="px-4 py-3 border-t border-outline-variant">
+        ${rules.length === 0 ? '<p class="text-body-sm font-body-sm text-on-surface-variant mb-3">Sin reglas todavia.</p>' : ''}
+        ${rules.map(r => renderRuleCard(eid, r)).join('')}
+        <button onclick="showRuleForm('${eid}')" class="mt-3 border border-dashed border-outline-variant text-on-surface-variant hover:text-primary hover:border-primary px-3 py-2 rounded-lg w-full text-body-sm font-body-sm transition-all">+ Agregar regla</button>
+      </div>
+    </details>`;
+  }).join('');
+}
+
+function renderRuleCard(roiId, r) {
+  const rid = esc(r.id);
+  const clsLabel = r.class_id != null ? (window._CLASS_NAMES && window._CLASS_NAMES[r.class_id] ? window._CLASS_NAMES[r.class_id] : 'class_'+r.class_id) : 'Todas';
+  const opLabel = r.operator === '==' ? '=' : r.operator;
+  const valLabel = r.operator === 'between' ? (r.threshold + ' — ' + (r.threshold2 || '-')) : r.threshold;
+  const severityColor = r.severity === 'critical' ? 'bg-red-100 text-red-700' : r.severity === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700';
+  const severityIcon = r.severity === 'critical' ? 'error' : r.severity === 'warning' ? 'warning' : 'info';
+  const activeToggle = r.active
+    ? '<button onclick="toggleRule(\''+rid+'\',false)" class="px-3 py-1 rounded-full text-xs font-bold bg-primary text-on-primary hover:brightness-110 transition-all">Activa</button>'
+    : '<button onclick="toggleRule(\''+rid+'\',true)" class="px-3 py-1 rounded-full text-xs font-bold border border-outline-variant text-on-surface-variant hover:bg-surface-container transition-all">Inactiva</button>';
+  return `<div class="rule-card border border-outline-variant rounded-lg p-3 mb-2 bg-surface-container-lowest" id="rule-${rid}">
+    <div class="flex items-center justify-between mb-1">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined ${severityColor} p-1 rounded-full" style="font-size:14px">${severityIcon}</span>
+        <span class="text-body-sm font-bold font-body-sm text-on-surface">${esc(r.name)}</span>
+        ${activeToggle}
+      </div>
+      <div class="flex gap-1">
+        <button onclick="editRule('${rid}')" class="p-1 rounded hover:bg-surface-container text-on-surface-variant hover:text-primary transition-all" title="Editar"><span class="material-symbols-outlined" style="font-size:16px">edit</span></button>
+        <button onclick="deleteRule('${rid}','${esc(r.name)}')" class="p-1 rounded hover:bg-error-container text-on-surface-variant hover:text-error transition-all" title="Eliminar"><span class="material-symbols-outlined" style="font-size:16px">delete</span></button>
+      </div>
+    </div>
+    <div class="text-body-sm font-body-sm text-on-surface-variant ml-7">
+      SI <strong>${r.metric}(${clsLabel})</strong> ${opLabel} <strong>${valLabel}</strong>
+      → <span class="font-bold">${esc(r.event_type)}</span>
+      ${r.time_from ? ' · '+r.time_from+'-'+r.time_to : ''}
+    </div>
+    <div id="rule-form-${rid}" class="hidden mt-3 border-t border-outline-variant pt-3"></div>
+  </div>`;
+}
+
+// ── RULE CRUD ──
+
+async function toggleRule(ruleId, active) {
+  try {
+    await fetchJSON('/api/alert-rules/' + ruleId + '/toggle', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({active}) });
+    renderRulesTab();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function deleteRule(ruleId, name) {
+  if (!confirm('Eliminar la regla "' + name + '"?')) return;
+  try {
+    const res = await fetch('/api/alert-rules/' + ruleId, { method: 'DELETE' });
+    if (res.status >= 400) { alert('Error al eliminar'); return; }
+    renderRulesTab();
+  } catch (e) { alert('Error de red: ' + e.message); }
+}
+
+function showRuleForm(roiId) {
+  const rid = '_new_' + roiId;
+  const parent = event.target.closest('.border-dashed').parentElement;
+  const formId = 'rule-form-new-' + roiId;
+  let formEl = document.getElementById(formId);
+  if (formEl) { formEl.classList.toggle('hidden'); return; }
+  const div = document.createElement('div');
+  div.id = formId;
+  div.className = 'mt-3 p-3 border border-primary rounded-lg bg-surface-container';
+  div.innerHTML = ruleFormHTML(roiId, null);
+  parent.appendChild(div);
+}
+
+function editRule(ruleId) {
+  const formContainer = document.getElementById('rule-form-' + ruleId);
+  if (!formContainer) return;
+  formContainer.classList.toggle('hidden');
+  if (formContainer.innerHTML === '') {
+    for (const roiId in rulesCache) {
+      const rule = rulesCache[roiId].find(r => r.id === ruleId);
+      if (rule) {
+        formContainer.innerHTML = ruleFormHTML(roiId, rule);
+        break;
+      }
+    }
+  }
+}
+
+async function saveRuleForm(roiId, ruleId) {
+  const prefix = ruleId ? 'rule-' + ruleId : 'new-' + roiId;
+  const name = document.getElementById(prefix + '-name');
+  const classId = document.getElementById(prefix + '-class');
+  const metric = document.getElementById(prefix + '-metric');
+  const operator = document.getElementById(prefix + '-operator');
+  const threshold = document.getElementById(prefix + '-threshold');
+  const threshold2 = document.getElementById(prefix + '-threshold2');
+  const severity = document.getElementById(prefix + '-severity');
+  const eventType = document.getElementById(prefix + '-event');
+  const timeFrom = document.getElementById(prefix + '-time-from');
+  const timeTo = document.getElementById(prefix + '-time-to');
+  if (!name || !metric || !operator || !threshold || !severity || !eventType) return;
+  if (!name.value.trim()) { alert('Nombre requerido'); return; }
+  const body = {
+    name: name.value.trim(),
+    class_id: classId ? (classId.value ? parseInt(classId.value) : null) : null,
+    metric: metric.value,
+    operator: operator.value,
+    threshold: parseFloat(threshold.value),
+    threshold2: threshold2 && threshold2.value ? parseFloat(threshold2.value) : null,
+    severity: severity.value,
+    event_type: eventType.value,
+    time_from: timeFrom && timeFrom.value ? timeFrom.value : null,
+    time_to: timeTo && timeTo.value ? timeTo.value : null,
+  };
+  try {
+    let res;
+    if (ruleId) {
+      res = await fetchJSON('/api/alert-rules/' + ruleId, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    } else {
+      res = await fetchJSON('/api/rois/' + roiId + '/alert-rules', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    }
+    if (res.status >= 400) { alert('Error: ' + (res.data.error || 'Unknown')); return; }
+    renderRulesTab();
+  } catch (e) { alert('Network error: ' + e.message); }
+}
+
+function cancelRuleForm(roiId, ruleId) {
+  if (ruleId) {
+    const el = document.getElementById('rule-form-' + ruleId);
+    if (el) el.classList.add('hidden');
+  } else {
+    const el = document.getElementById('rule-form-new-' + roiId);
+    if (el) el.remove();
+  }
+}
+
+function ruleFormHTML(roiId, rule) {
+  const prefix = rule ? 'rule-' + rule.id : 'new-' + roiId;
+  const r = rule || {};
+  const clsOptions = '<option value="">Todas las observadas</option>'
+    + (window._CLASS_NAMES
+      ? Object.entries(window._CLASS_NAMES).map(([id, name]) => `<option value="${id}" ${r.class_id == id ? 'selected':''}>${esc(name)}</option>`).join('')
+      : '');
+  const metrics = ['count','occupancy','dwell_seconds'].map(m => `<option value="${m}" ${r.metric===m?'selected':''}>${m}</option>`).join('');
+  const operators = ['>','<','>=','<=','==','between'].map(o => `<option value="${o}" ${r.operator===o?'selected':''}>${o === '==' ? '=' : o}</option>`).join('');
+  const severities = ['info','warning','critical'].map(s => `<option value="${s}" ${r.severity===s?'selected':''}>${s}</option>`).join('');
+  const eventTypes = ['OccupancyHigh','OccupancyLow','DwellExceeded','ObjectCountExceeded','ForbiddenClassDetected'].map(e => `<option value="${e}" ${r.event_type===e?'selected':''}>${e}</option>`).join('');
+  return `<form class="space-y-2" onsubmit="event.preventDefault(); saveRuleForm('${roiId}','${r.id||''}')">
+    <div class="grid grid-cols-2 gap-2">
+      <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Nombre</label><input id="${prefix}-name" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm" value="${esc(r.name||'')}" placeholder="Nombre de la regla"/></div>
+      <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Clase</label><select id="${prefix}-class" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm">${clsOptions}</select></div>
+    </div>
+    <div class="grid grid-cols-4 gap-2">
+      <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Metrica</label><select id="${prefix}-metric" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm">${metrics}</select></div>
+      <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Op</label><select id="${prefix}-operator" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm">${operators}</select></div>
+      <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Threshold</label><input id="${prefix}-threshold" type="number" step="any" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm" value="${r.threshold!=null?r.threshold:''}" placeholder="Valor"/></div>
+      <div id="${prefix}-t2-wrapper"><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Threshold 2</label><input id="${prefix}-threshold2" type="number" step="any" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm" value="${r.threshold2!=null?r.threshold2:''}" placeholder="Valor max"/></div>
+    </div>
+    <div class="grid grid-cols-3 gap-2">
+      <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Severidad</label><select id="${prefix}-severity" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm">${severities}</select></div>
+      <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Evento</label><select id="${prefix}-event" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm">${eventTypes}</select></div>
+      <div class="grid grid-cols-2 gap-1">
+        <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Desde</label><input id="${prefix}-time-from" type="time" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm" value="${r.time_from||''}"/></div>
+        <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Hasta</label><input id="${prefix}-time-to" type="time" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm" value="${r.time_to||''}"/></div>
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end pt-1">
+      <button type="button" onclick="cancelRuleForm('${roiId}','${r.id||''}')" class="border border-outline-variant text-on-surface-variant px-3 py-1.5 rounded-lg text-body-sm font-body-sm hover:bg-surface-container transition-all">Cancelar</button>
+      <button type="submit" class="bg-primary text-on-primary px-3 py-1.5 rounded-lg text-body-sm font-body-sm font-bold hover:brightness-110 transition-all">${r.id ? 'Guardar' : 'Crear'}</button>
+    </div>
+  </form>`;
+}
+
+// Inject CLASS_NAMES at page load for rule form dropdowns
+(async function() {
+  try {
+    const res = await fetch('/api/classes');
+    const data = (res.status < 400) ? await res.json() : [];
+    window._CLASS_NAMES = {};
+    (data || []).forEach(c => { window._CLASS_NAMES[c.id] = c.name; });
+  } catch(e) {}
+})();
 
 // SETTINGS TAB
 
@@ -1229,7 +1482,7 @@ document.addEventListener('DOMContentLoaded', function() {
     dateEl.textContent = months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
   }
   // Initial load
-  fetchSources();
+  fetchSources(true);
 });
 
 async function fetchDashboard() {
@@ -1243,6 +1496,9 @@ async function fetchDashboard() {
     renderROIChart(d.top_rois);
     renderRecentSessions(d.recent_sessions);
     renderHourlyChart(d.hourly_distribution);
+    renderDashAlertsSeverity(d);
+    renderDashClassDistribution(d);
+    renderDashAlertsTimeline(d);
   } catch (e) {
     const el = document.getElementById('dash-cards');
     if (el) el.innerHTML = '<div class="col-span-full text-center py-8 text-error">Error cargando dashboard</div>';
@@ -1266,6 +1522,82 @@ function renderDashCards(d) {
         <span class="material-symbols-outlined ${c.color} opacity-60" style="font-size:20px">${c.icon}</span>
       </div>
       <p class="text-headline-lg font-headline-lg font-bold ${c.color}">${c.value}</p>
+    </div>
+  `).join('');
+}
+
+function renderDashAlertsSeverity(d) {
+  const el = document.getElementById('dash-alerts-severity');
+  if (!el) return;
+  const sev = d.alerts_by_severity || {};
+  const total = d.active_alerts || 0;
+  if (total === 0) {
+    el.innerHTML = '<div class="text-center py-8"><span class="material-symbols-outlined text-on-surface-variant mb-2" style="font-size:32px">check_circle</span><p class="text-body-sm text-on-surface-variant">Sin alertas activas en las ultimas 24h</p></div>';
+    return;
+  }
+  const severityMap = { critical: {label: 'Criticas', color: 'bg-red-100 text-red-700', bar: 'bg-red-500', icon: 'error'},
+    warning: {label: 'Warning', color: 'bg-amber-100 text-amber-700', bar: 'bg-amber-500', icon: 'warning'},
+    info: {label: 'Info', color: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500', icon: 'info'} };
+  const colors = ['red','amber','blue'];
+  let i = 0;
+  el.innerHTML = Object.entries(severityMap).map(([key, cfg]) => {
+    const count = sev[key] || 0;
+    const pct = total > 0 ? (count / total) * 100 : 0;
+    return `<div class="flex items-center gap-3 mb-2">
+      <span class="material-symbols-outlined ${cfg.color} p-1 rounded-full" style="font-size:14px">${cfg.icon}</span>
+      <span class="text-body-sm font-body-sm flex-1">${cfg.label}</span>
+      <span class="text-body-sm font-bold font-body-sm">${count}</span>
+      <div class="w-24 h-2 bg-surface-container-higher rounded-full overflow-hidden">
+        <div class="${cfg.bar} h-full rounded-full" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderDashClassDistribution(d) {
+  const el = document.getElementById('dash-class-distribution');
+  if (!el) return;
+  const cls = d.class_distribution || [];
+  if (cls.length === 0) {
+    el.innerHTML = '<div class="text-center py-8"><p class="text-body-sm text-on-surface-variant">Sin datos de clases.</p></div>';
+    return;
+  }
+  const total = cls.reduce((sum, c) => sum + c.count, 0);
+  const colors = ['#005d54','#13776d','#80d6c9','#a5fbee','#3866c7','#154dad','#9f4123','#fd8865','#b1c5ff','#e4e2dd'];
+  el.innerHTML = cls.map((c, i) => {
+    const pct = total > 0 ? ((c.count / total) * 100).toFixed(1) : 0;
+    return `<div class="flex items-center gap-2 mb-1.5">
+      <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${colors[i % colors.length]}"></span>
+      <span class="text-body-sm font-body-sm flex-1 text-on-surface">${esc(c.class)}</span>
+      <span class="text-body-sm font-body-sm text-on-surface-variant">${c.count}</span>
+      <span class="text-body-sm font-body-sm text-outline w-10 text-right">${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+function renderDashAlertsTimeline(d) {
+  const el = document.getElementById('dash-alerts-timeline');
+  if (!el) return;
+  const alerts = d.alerts_timeline || [];
+  if (alerts.length === 0) {
+    el.innerHTML = '<div class="text-center py-8"><p class="text-body-sm text-on-surface-variant">Sin alertas registradas.</p></div>';
+    return;
+  }
+  const severityIcon = s => s === 'critical' ? 'error' : s === 'warning' ? 'warning' : 'info';
+  const severityColor = s => s === 'critical' ? 'bg-red-100 text-red-700' : s === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700';
+  el.innerHTML = alerts.map(a => `
+    <div class="flex items-start gap-3 py-2 border-b border-outline-variant last:border-0">
+      <span class="material-symbols-outlined ${severityColor(a.severity)} p-1 rounded-full flex-shrink-0" style="font-size:14px">${severityIcon(a.severity)}</span>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <span class="text-body-sm font-bold font-body-sm text-on-surface">${esc(a.rule_name || a.event_type)}</span>
+          <span class="text-label-caps font-label-caps uppercase ${severityColor(a.severity)} px-1.5 py-0.5 rounded">${a.severity}</span>
+        </div>
+        <p class="text-body-sm font-body-sm text-on-surface-variant truncate">
+          ${a.event_type} · ${esc(a.object_class || 'all')} ${a.value != null ? '· valor: ' + a.value : ''}
+        </p>
+        <p class="text-body-sm font-body-sm text-outline">${formatDate(a.occurred_at)}</p>
+      </div>
     </div>
   `).join('');
 }

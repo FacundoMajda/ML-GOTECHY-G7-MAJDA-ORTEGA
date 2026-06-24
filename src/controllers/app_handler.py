@@ -8,8 +8,9 @@ import threading
 import time
 import traceback
 import uuid
-from cgi import FieldStorage
 from datetime import datetime
+from email.parser import BytesParser
+from email.policy import default as email_default_policy
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -24,6 +25,7 @@ from src.providers.youtube_utils import extract_stream_url
 from src.repositories.db import execute_query
 from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
 from src.repositories.roi_repo import ROIRepository
+from src.repositories.alert_rule_repo import AlertRuleRepository
 from src.repositories.class_catalog_repo import ObjectClassCatalogRepository
 from src.repositories.session_repo import SessionRepository
 from src.repositories.video_source_repo import VideoSourceRepository
@@ -37,12 +39,15 @@ from src.utils.html_utils import render_home
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOADS_PATH = BASE_DIR / UPLOADS_DIR
 
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+
 _repo = VideoSourceRepository()
 _session_repo = SessionRepository()
 _roi_repo = ROIRepository()
 _snapshot_repo = OccupancySnapshotRepository()
 _zone_repo = ZoneEventRepository()
 _class_catalog = ObjectClassCatalogRepository()
+_alert_rule_repo = AlertRuleRepository()
 
 # ── Job progress (thread-safe) ─────────────────────────────────────────────
 _job_progress: dict = {}
@@ -213,6 +218,7 @@ def _source_to_dict(src: VideoSourceConfig, rois: list[ROIConfig]) -> dict:
                 "detect_occupancy": r.detect_occupancy,
                 "detect_dwell": r.detect_dwell,
                 "alerts": r.alerts,
+                "observed_classes": r.observed_classes,
             }
             for r in rois
         ],
@@ -252,22 +258,28 @@ ROUTES_GET = {
     "/api/logs/data": "_api_logs_data",
     "/api/classes": "_api_classes",
     "/api/classes/grouped": "_api_classes_grouped",
+    re.compile(r"^/api/rois/([^/]+)/alert-rules$"): "_api_list_alert_rules",
 }
 
 ROUTES_POST = {
     "/api/uploads": "_handle_upload_file",
     "/api/sources": "_handle_create_source",
     re.compile(r"^/api/sources/([^/]+)/rois$"): "_api_create_roi",
+    re.compile(r"^/api/rois/([^/]+)/alert-rules$"): "_api_create_alert_rule",
+    re.compile(r"^/api/alert-rules/([^/]+)/toggle$"): "_api_toggle_alert_rule",
     "/process": "_handle_process",
 }
 
 ROUTES_DELETE = {
     re.compile(r"^/api/rois/([^/]+)$"): "_api_delete_roi",
     re.compile(r"^/api/sources/([^/]+)$"): "_api_delete_source",
+    re.compile(r"^/api/alert-rules/([^/]+)$"): "_api_delete_alert_rule",
 }
 
 ROUTES_PUT = {
     re.compile(r"^/api/rois/([^/]+)/config$"): "_api_update_roi_config",
+    re.compile(r"^/api/rois/([^/]+)/observed-classes$"): "_api_update_roi_observed_classes",
+    re.compile(r"^/api/alert-rules/([^/]+)$"): "_api_update_alert_rule",
 }
 
 
@@ -621,45 +633,91 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "multipart/form-data is required"})
             return
 
-        form = FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": ctype,
-            },
-        )
+        try:
+            raw_length = self.headers.get("Content-Length", "0")
+            content_length = int(raw_length)
+        except (ValueError, TypeError):
+            content_length = 0
 
-        file_item = form["file"] if "file" in form else None
-        if file_item is None or not getattr(file_item, "file", None):
-            print(f"[DEBUG] AppHandler._handle_upload_file: no file field, 400", flush=True)
-            self._send_json(400, {"error": "file field is required"})
+        if content_length <= 0:
+            print(f"[DEBUG] AppHandler._handle_upload_file: missing Content-Length, 400", flush=True)
+            self._send_json(400, {"error": "Content-Length header is required"})
             return
 
-        original_name = Path(file_item.filename or "upload.mp4").name
-        if not original_name:
-            original_name = "upload.mp4"
+        if content_length > MAX_UPLOAD_BYTES:
+            print(f"[DEBUG] AppHandler._handle_upload_file: file too large ({content_length} bytes), 413", flush=True)
+            self._send_json(413, {"error": f"File exceeds maximum size of {MAX_UPLOAD_BYTES // (1024 * 1024)}MB"})
+            return
 
-        ext = Path(original_name).suffix or ".mp4"
-        safe_stem = Path(original_name).stem.strip().replace(" ", "_") or "upload"
-        filename = f"{safe_stem}_{uuid.uuid4().hex[:8]}{ext}"
+        try:
+            body = self.rfile.read(content_length)
+            if len(body) < content_length:
+                print(f"[DEBUG] AppHandler._handle_upload_file: body truncated ({len(body)} < {content_length}), 400", flush=True)
+                self._send_json(400, {"error": "Request body truncated"})
+                return
 
-        UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
-        target = UPLOADS_PATH / filename
+            # Parse multipart with email.parser — avoids deprecated cgi.FieldStorage
+            # which crashes without CONTENT_LENGTH in environ.
+            raw_msg = b"Content-Type: " + ctype.encode("ascii") + b"\r\n\r\n" + body
+            msg = BytesParser(policy=email_default_policy).parsebytes(raw_msg)
 
-        with target.open("wb") as fh:
-            shutil.copyfileobj(file_item.file, fh)
+            file_bytes = None
+            original_name = None
+            for part in msg.walk():
+                if part.get_content_maintype() == "multipart":
+                    continue
+                # Only accept the part named "file"
+                disp_name = part.get_param("name", header="Content-Disposition")
+                if disp_name == "file":
+                    payload = part.get_payload(decode=True)
+                    if isinstance(payload, bytes) and len(payload) > 0:
+                        file_bytes = payload
+                        original_name = part.get_filename()
+                        break
 
-        print(f"[DEBUG] AppHandler._handle_upload_file: saved file -> {filename}", flush=True)
-        self._send_json(
-            201,
-            {
-                "filename": filename,
-                "original_name": original_name,
-                "path": str(target),
-                "relative_path": str(target.relative_to(BASE_DIR)).replace("\\", "/"),
-            },
-        )
+            if file_bytes is None:
+                print(f"[DEBUG] AppHandler._handle_upload_file: no file field in multipart, 400", flush=True)
+                self._send_json(400, {"error": "file field is required"})
+                return
+
+            original_name = Path(original_name or "upload.mp4").name
+            if not original_name:
+                original_name = "upload.mp4"
+
+            ext = Path(original_name).suffix or ".mp4"
+            safe_stem = Path(original_name).stem.strip().replace(" ", "_") or "upload"
+            filename = f"{safe_stem}_{uuid.uuid4().hex[:8]}{ext}"
+
+            UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
+            target = UPLOADS_PATH / filename
+            target.write_bytes(file_bytes)
+
+            print(f"[DEBUG] AppHandler._handle_upload_file: saved file -> {filename} ({len(file_bytes)} bytes)", flush=True)
+            try:
+                relative_path = str(target.relative_to(BASE_DIR)).replace("\\", "/")
+            except ValueError:
+                relative_path = str(target.resolve()).replace("\\", "/")
+            self._send_json(
+                201,
+                {
+                    "filename": filename,
+                    "original_name": original_name,
+                    "path": str(target),
+                    "relative_path": relative_path,
+                },
+            )
+        except PermissionError as e:
+            print(f"[DEBUG] AppHandler._handle_upload_file: PermissionError -> {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": f"Cannot write upload directory: {e}"})
+        except OSError as e:
+            print(f"[DEBUG] AppHandler._handle_upload_file: OSError -> {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": f"File system error: {e}"})
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._handle_upload_file: EXCEPTION -> {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": f"Upload failed: {e}"})
 
     def _handle_create_source(self) -> None:
         """POST /api/sources"""
@@ -835,7 +893,16 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
 
         roi_id = str(uuid.uuid4())
-        roi = ROIConfig(id=roi_id, name=name, polygon=polygon)
+        observed_classes = body.get("observed_classes") or ["person"]
+        if not isinstance(observed_classes, list) or not all(isinstance(c, str) for c in observed_classes):
+            self._send_json(400, {"error": "observed_classes must be a list of strings"})
+            return
+        if not observed_classes:
+            observed_classes = ["person"]
+        roi = ROIConfig(
+            id=roi_id, name=name, polygon=polygon,
+            observed_classes=observed_classes,
+        )
         _roi_repo.create(roi, source_id)
 
         print(f"[DEBUG] AppHandler._api_create_roi: created roi {roi_id}", flush=True)
@@ -850,6 +917,7 @@ class AppHandler(BaseHTTPRequestHandler):
             "detect_occupancy": roi.detect_occupancy,
             "detect_dwell": roi.detect_dwell,
             "alerts": roi.alerts,
+            "observed_classes": roi.observed_classes,
         })
 
     # ── API handlers — DELETE ─────────────────────────────────────────────
@@ -906,6 +974,24 @@ class AppHandler(BaseHTTPRequestHandler):
         print(f"[DEBUG] AppHandler._api_update_roi_config: returning updated={updated}", flush=True)
         self._send_json(200, updated)
 
+    def _api_update_roi_observed_classes(self, roi_id: str) -> None:
+        """PUT /api/rois/<id>/observed-classes — replace the observed-classes list."""
+        print(f"[DEBUG] AppHandler._api_update_roi_observed_classes: ENTRY roi_id={roi_id}", flush=True)
+        existing = _roi_repo.get_by_id(roi_id)
+        if existing is None:
+            self._send_json(404, {"error": "ROI not found"})
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length)) if length else {}
+        classes = body.get("classes")
+        if not isinstance(classes, list) or not all(isinstance(c, str) for c in classes):
+            self._send_json(400, {"error": "classes must be a list of strings"})
+            return
+        if not classes:
+            classes = ["person"]
+        _roi_repo.update_observed_classes(roi_id, classes)
+        self._send_json(200, {"id": roi_id, "observed_classes": classes})
+
     # ── Logs / Problems + Resources ───────────────────────────────────────
 
     def _api_classes(self) -> None:
@@ -922,6 +1008,104 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             data = _class_catalog.list_grouped_by_category()
             self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    # ── Alert Rules CRUD ─────────────────────────────────────────────
+
+    def _api_list_alert_rules(self, roi_id: str) -> None:
+        """GET /api/rois/<id>/alert-rules"""
+        try:
+            data = _alert_rule_repo.list_by_roi(roi_id)
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_create_alert_rule(self, roi_id: str) -> None:
+        """POST /api/rois/<id>/alert-rules"""
+        if _roi_repo.get_by_id(roi_id) is None:
+            self._send_json(404, {"error": "ROI not found"})
+            return
+        try:
+            body = self._read_json_body()
+            if body is None:
+                return  # 400 already sent
+            name = (body.get("name") or "").strip()
+            if not name:
+                self._send_json(400, {"error": "name is required"})
+                return
+            metric = body.get("metric")
+            operator = body.get("operator")
+            event_type = body.get("event_type")
+            if not metric or not operator or not event_type:
+                self._send_json(400, {"error": "metric, operator, event_type are required"})
+                return
+            rule_id = _alert_rule_repo.create(
+                roi_id=roi_id,
+                name=name,
+                metric=metric,
+                operator=operator,
+                event_type=event_type,
+                threshold=body.get("threshold"),
+                threshold2=body.get("threshold2"),
+                class_id=body.get("class_id"),
+                time_from=body.get("time_from"),
+                time_to=body.get("time_to"),
+                severity=body.get("severity", "warning"),
+                active=body.get("active", True),
+            )
+            created = _alert_rule_repo.get_by_id(str(rule_id))
+            self._send_json(201, created)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_update_alert_rule(self, rule_id: str) -> None:
+        """PUT /api/alert-rules/<id>"""
+        try:
+            body = self._read_json_body()
+            if body is None:
+                return
+            _alert_rule_repo.update(rule_id, **body)
+            updated = _alert_rule_repo.get_by_id(rule_id)
+            if updated is None:
+                self._send_json(404, {"error": "Rule not found"})
+                return
+            self._send_json(200, updated)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_delete_alert_rule(self, rule_id: str) -> None:
+        """DELETE /api/alert-rules/<id>"""
+        try:
+            _alert_rule_repo.delete(rule_id)
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_toggle_alert_rule(self, rule_id: str) -> None:
+        """POST /api/alert-rules/<id>/toggle — body: {active: bool}, optional (toggles if omitted)."""
+        try:
+            body = self._read_json_body()
+            if body is None:
+                body = {}
+            # If body is empty, toggle: fetch current state and invert it
+            if not body:
+                current = _alert_rule_repo.get_by_id(rule_id)
+                if current is None:
+                    self._send_json(404, {"error": "Rule not found"})
+                    return
+                active = not current["active"]
+            else:
+                active = bool(body.get("active", True))
+            _alert_rule_repo.toggle_active(rule_id, active)
+            self._send_json(200, {"id": rule_id, "active": active})
         except Exception as e:
             traceback.print_exc()
             self._send_json(500, {"error": str(e)})
@@ -1038,6 +1222,18 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(500, {'error': str(e)})
 
     # ── Helpers ────────────────────────────────────────────────────────────
+
+    def _read_json_body(self) -> dict | None:
+        """Read JSON body, return dict or None and send 400 on JSON error."""
+        length = int(self.headers.get("Content-Length", 0))
+        if not length:
+            return {}
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw) if raw else {}
+        except json.JSONDecodeError as e:
+            self._send_json(400, {"error": f"Invalid JSON payload: {e}"})
+            return None
 
     def _send_json(self, status: int, data) -> None:
         print(f"[DEBUG] AppHandler._send_json: status={status} data_preview={str(data)[:200]}", flush=True)

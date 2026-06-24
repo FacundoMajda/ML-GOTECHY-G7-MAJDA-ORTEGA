@@ -4,12 +4,15 @@
 
 from src.repositories.session_repo import SessionRepository
 from src.repositories.metric_snapshot_repo import MetricSnapshotRepository
+from src.repositories.roi_repo import ROIRepository
+from src.repositories.db import execute_query
 
 
 def generate_report_html(session_id: str) -> str:
     """Genera HTML limpio para un analisis. Lee de metric_snapshot."""
     session_repo = SessionRepository()
     snapshot_repo = MetricSnapshotRepository()
+    roi_repo = ROIRepository()
 
     session = session_repo.get_by_id(session_id)
     if not session:
@@ -17,26 +20,61 @@ def generate_report_html(session_id: str) -> str:
 
     snapshots = snapshot_repo.get_by_session(session_id)
 
+    # Cache de nombres de ROI
+    roi_names: dict[str, str] = {}
+
+    def _roi_name(roi_id: str) -> str:
+        if roi_id not in roi_names:
+            roi = roi_repo.get_by_id(roi_id)
+            roi_names[roi_id] = roi["name"] if roi and roi.get("name") else roi_id[:8]
+        return roi_names[roi_id]
+
     # Metricas totales
     total_entries = sum(s["entries"] for s in snapshots)
     total_exits = sum(s["exits"] for s in snapshots)
     max_occ = max((s["max_occupancy"] for s in snapshots), default=0)
 
-    # Por ROI
-    roi_rows = []
+    # ── Por ROI (agg por roi, sumando clases) ──
+    roi_agg: dict[str, dict] = {}
     for s in snapshots:
-        roi_name = s["roi_id"][:8]  # solo por legibilidad, no es interno
-        dwell_str = f'{s["avg_dwell_seconds"]:.1f}s' if s.get("avg_dwell_seconds") else "-"
+        rid = s["roi_id"]
+        if rid not in roi_agg:
+            roi_agg[rid] = {"entries": 0, "exits": 0, "max_occ": 0}
+        roi_agg[rid]["entries"] += s["entries"]
+        roi_agg[rid]["exits"] += s["exits"]
+        roi_agg[rid]["max_occ"] = max(roi_agg[rid]["max_occ"], s["max_occupancy"])
+
+    roi_rows = []
+    for rid, m in roi_agg.items():
+        name = _roi_name(rid)
         roi_rows.append(
             f"<tr>"
-            f"<td>{roi_name}...</td>"
+            f"<td>{name}</td>"
+            f"<td>{m['entries']}</td>"
+            f"<td>{m['exits']}</td>"
+            f"<td>{m['max_occ']}</td>"
+            f"</tr>"
+        )
+    roi_rows_html = "\n".join(roi_rows) if roi_rows else "<tr><td colspan='4'>Sin ROIs procesadas.</td></tr>"
+
+    # ── Distribucion por Clase (por ROI + clase) ──
+    cls_rows = []
+    for s in snapshots:
+        name = _roi_name(s["roi_id"])
+        object_class = s.get("object_class") or "person"
+        dwell_str = f'{s["avg_dwell_seconds"]:.1f}s' if s.get("avg_dwell_seconds") else "-"
+        cls_rows.append(
+            f"<tr>"
+            f"<td>{name}</td>"
+            f"<td>{object_class}</td>"
             f"<td>{s['entries']}</td>"
             f"<td>{s['exits']}</td>"
             f"<td>{s['max_occupancy']}</td>"
             f"<td>{dwell_str}</td>"
+            f"<td>{s['unique_objects']}</td>"
             f"</tr>"
         )
-    roi_rows_html = "\n".join(roi_rows) if roi_rows else "<tr><td colspan='5'>Sin ROIs procesadas.</td></tr>"
+    cls_rows_html = "\n".join(cls_rows) if cls_rows else "<tr><td colspan='7'>Sin datos por clase.</td></tr>"
 
     started = session.get("started_at", "")
     ended = session.get("ended_at", "")
@@ -62,7 +100,7 @@ def generate_report_html(session_id: str) -> str:
     }}
     * {{ box-sizing: border-box; }}
     body {{ margin: 0; font-family: Georgia, serif; color: var(--ink); background: var(--bg); }}
-    .wrap {{ max-width: 900px; margin: 0 auto; padding: 32px 20px 60px; }}
+    .wrap {{ max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }}
     .hero {{ background: rgba(255,250,243,0.94); border: 1px solid var(--line); border-radius: 22px; padding: 22px; margin-bottom: 24px; }}
     h1 {{ margin: 0 0 12px; font-size: 2rem; }}
     p {{ margin: 0 0 10px; }}
@@ -109,10 +147,23 @@ def generate_report_html(session_id: str) -> str:
       <h2>Resumen por Zona</h2>
       <table>
         <thead>
-          <tr><th>Zona</th><th>Entradas</th><th>Salidas</th><th>Pico Ocupacion</th><th>Dwell Promedio</th></tr>
+          <tr><th>Zona</th><th>Entradas</th><th>Salidas</th><th>Pico Ocupacion</th></tr>
         </thead>
         <tbody>
           {roi_rows_html}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Distribucion por Clase</h2>
+      <p class="muted" style="margin-bottom:14px">Desglose de entradas, salidas y ocupacion por zona y clase de objeto.</p>
+      <table>
+        <thead>
+          <tr><th>Zona</th><th>Clase</th><th>Entradas</th><th>Salidas</th><th>Pico</th><th>Dwell Prom</th><th>Objetos Unicos</th></tr>
+        </thead>
+        <tbody>
+          {cls_rows_html}
         </tbody>
       </table>
     </div>
