@@ -299,7 +299,9 @@ class MetricsService:
                     md = json.loads(md)
                 except (json.JSONDecodeError, TypeError):
                     md = {}
-            elif md is None:
+            elif isinstance(md, dict) or md is None:
+                pass
+            else:
                 md = {}
             alerts_timeline.append({
                 "id": row[0],

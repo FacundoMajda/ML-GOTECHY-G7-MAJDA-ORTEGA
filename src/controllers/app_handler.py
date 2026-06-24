@@ -629,7 +629,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 """
                 SELECT ze.id::text, ze.event_type, ze.occurred_at,
                        ze.track_id, ze.frame_number, ze.dwell_seconds,
-                       r.name AS roi_name, ze.object_class
+                       r.name AS roi_name, ze.object_class,
+                       ze.metadata, ze.rule_id::text
                 FROM zone_event ze
                 JOIN roi r ON r.id = ze.roi_id
                 WHERE ze.session_id = %s
@@ -648,9 +649,62 @@ class AppHandler(BaseHTTPRequestHandler):
                     "dwell_seconds": float(row[5]) if row[5] is not None else None,
                     "roi_name": row[6],
                     "object_class": row[7] or 'person',
+                    "_metadata": row[8] if row[8] else {},
+                    "rule_id": row[9],
                 }
                 for row in events
             ]
+            for ev in zone_events:
+                meta = ev.pop("_metadata")
+                ev["severity"] = meta.get("severity")
+                ev["rule_name"] = meta.get("rule_name")
+                ev["value"] = meta.get("value")
+
+# ── Alert rules evaluated during this session ──
+            triggered_rule_ids = {ev["rule_id"] for ev in zone_events if ev.get("rule_id")}
+            session_roi_ids = {str(s['roi_id']) for s in cleaned_snaps}
+            if not session_roi_ids:
+                session_roi_ids = {ev["roi_id"] for ev in zone_events if ev.get("rule_id")}
+            if not session_roi_ids and session.get('video_source_id'):
+                roi_fallback = execute_query(
+                    "SELECT id::text FROM roi WHERE video_source_id = %s",
+                    (session['video_source_id'],),
+                    fetch="all",
+                )
+                session_roi_ids = {r[0] for r in roi_fallback}
+            alert_rules_by_roi: dict[str, list] = {}
+            if session_roi_ids:
+                import json as _json
+                placeholders = ",".join(["%s"] * len(session_roi_ids))
+                rules_rows = execute_query(
+                    f"""
+                    SELECT id::text, roi_id::text, name, class_id, metric, operator,
+                           threshold, threshold2, event_type, severity, active, time_from, time_to
+                    FROM alert_rule
+                    WHERE roi_id IN ({placeholders}) AND active = TRUE
+                    ORDER BY created_at
+                    """,
+                    tuple(session_roi_ids),
+                    fetch="all",
+                )
+                for r in rules_rows:
+                    rid = str(r[0]); roi_id = str(r[1])
+                    rule = {
+                        "id": rid,
+                        "name": r[2],
+                        "class_id": r[3],
+                        "metric": r[4],
+                        "operator": r[5],
+                        "threshold": float(r[6]) if r[6] is not None else None,
+                        "threshold2": float(r[7]) if r[7] is not None else None,
+                        "event_type": r[8],
+                        "severity": r[9],
+                        "active": r[10],
+                        "time_from": str(r[11]) if r[11] is not None else None,
+                        "time_to": str(r[12]) if r[12] is not None else None,
+                        "triggered": rid in triggered_rule_ids,
+                    }
+                    alert_rules_by_roi.setdefault(roi_id, []).append(rule)
 
             # ── Per-class totals from zone_events (accurate even if metric_snapshot has stale data) ──
             class_summary: dict[str, dict] = {}
@@ -680,6 +734,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 'class_summary': class_summary,
                 'metrics': cleaned_snaps,
                 'zone_events': zone_events,
+                'alert_rules_by_roi': alert_rules_by_roi,
             })
         except Exception as e:
             traceback.print_exc()
@@ -1267,14 +1322,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 problems.append({
                     "type": "dwell_exceeded",
                     "zone_event_id": row[0],
-                    "roi_name": row[3],
+                    "roi_name": row[4],
                     "source_name": row[5],
                     "occurred_at": row[1].isoformat() if row[1] else None,
                     "track_id": row[2],
-                    "dwell_seconds": float(row[4]) if row[4] is not None else None,
-                    "detail": f"Tiempo excedido en {row[3]} ({row[5]}) — track {row[2]} estuvo {float(row[4]):.0f}s"
-                              if row[4] is not None else
-                              f"Tiempo excedido en {row[3]} ({row[5]}) — track {row[2]}",
+                    "dwell_seconds": float(row[3]) if row[3] is not None else None,
+                    "detail": f"Tiempo excedido en {row[4]} ({row[5]}) — track {row[2]} estuvo {float(row[3]):.0f}s"
+                              if row[3] is not None else
+                              f"Tiempo excedido en {row[4]} ({row[5]}) — track {row[2]}",
                 })
 
             problems.sort(key=lambda p: p.get("occurred_at") or "", reverse=True)

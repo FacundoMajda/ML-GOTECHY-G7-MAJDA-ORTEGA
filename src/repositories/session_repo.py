@@ -88,6 +88,7 @@ class SessionRepository:
             """
             SELECT
                 ds.id,
+                ds.video_source_id,
                 vs.name AS source_name,
                 vs.source_type AS source_type,
                 ds.started_at,
@@ -121,15 +122,16 @@ class SessionRepository:
         row = rows[0]
         result = {
             "id": str(row[0]),
-            "source_name": row[1],
-            "source_type": row[2],
-            "started_at": row[3].isoformat() if row[3] else None,
-            "ended_at": row[4].isoformat() if row[4] else None,
-            "duration_seconds": float(row[5]) if row[5] is not None else None,
-            "total_entities": int(row[6]),
-            "total_events": int(row[7]),
-            "output_video_path": row[8],
-            "status": row[9] if row[9] else 'completed',
+            "video_source_id": str(row[1]) if row[1] else None,
+            "source_name": row[2],
+            "source_type": row[3],
+            "started_at": row[4].isoformat() if row[4] else None,
+            "ended_at": row[5].isoformat() if row[5] else None,
+            "duration_seconds": float(row[6]) if row[6] is not None else None,
+            "total_entities": int(row[7]),
+            "total_events": int(row[8]),
+            "output_video_path": row[9],
+            "status": row[10] if row[10] else 'completed',
         }
         print(f"[DEBUG] SessionRepository.get_by_id: returning {result}", flush=True)
         return result

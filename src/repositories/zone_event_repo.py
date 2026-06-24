@@ -71,7 +71,7 @@ class ZoneEventRepository:
                 "track_id": r[3], "event_type": r[4],
                 "object_class": r[5] or "person",
                 "occurred_at": r[6], "frame_number": r[7],
-                "dwell_seconds": r[8], "metadata": json.loads(r[9]) if r[9] else {},
+                "dwell_seconds": r[8], "metadata": r[9] if isinstance(r[9], dict) else (json.loads(r[9]) if r[9] else {}),
             }
             for r in rows
         ]
