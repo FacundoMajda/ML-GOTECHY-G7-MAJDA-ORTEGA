@@ -610,6 +610,7 @@ class AppHandler(BaseHTTPRequestHandler):
             cleaned_snaps = [
                 {
                     'roi_id': str(s['roi_id']),
+                    'object_class': s.get('object_class') or 'person',
                     'entries': s['entries'],
                     'exits': s['exits'],
                     'max_occupancy': s['max_occupancy'],
@@ -628,7 +629,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 """
                 SELECT ze.id::text, ze.event_type, ze.occurred_at,
                        ze.track_id, ze.frame_number, ze.dwell_seconds,
-                       r.name AS roi_name
+                       r.name AS roi_name, ze.object_class
                 FROM zone_event ze
                 JOIN roi r ON r.id = ze.roi_id
                 WHERE ze.session_id = %s
@@ -646,6 +647,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     "frame_number": row[4],
                     "dwell_seconds": float(row[5]) if row[5] is not None else None,
                     "roi_name": row[6],
+                    "object_class": row[7] or 'person',
                 }
                 for row in events
             ]

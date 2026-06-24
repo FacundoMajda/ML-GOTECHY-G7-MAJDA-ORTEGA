@@ -18,3 +18,5 @@ build.log
 old_app.py
 video_analytics.py
 yolo11n.pt
+# Video files
+*.mp4

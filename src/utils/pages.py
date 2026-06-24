@@ -2314,15 +2314,36 @@ async function viewAnalysis(id) {
     var totalExits = data.total_exits || 0;
     var totalEvents = data.total_events || 0;
 
+    // ── Aggregate per class ──
+    var classAgg = {};
+    if (Array.isArray(data.metrics)) {
+      for (var mi = 0; mi < data.metrics.length; mi++) {
+        var m = data.metrics[mi];
+        var cls = m.object_class || 'person';
+        if (!classAgg[cls]) classAgg[cls] = { entries: 0, exits: 0, maxOcc: 0 };
+        classAgg[cls].entries += m.entries || 0;
+        classAgg[cls].exits += m.exits || 0;
+        if ((m.max_occupancy || 0) > classAgg[cls].maxOcc) classAgg[cls].maxOcc = m.max_occupancy || 0;
+      }
+    }
+    function classBadges(agg, field) {
+      var keys = Object.keys(agg);
+      if (keys.length === 0) return '';
+      return '<div class="flex flex-wrap gap-1 mt-2">' + keys.map(function(k) {
+        return '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-container text-on-surface">' + esc(k) + ': ' + agg[k][field] + '</span>';
+      }).join('') + '</div>';
+    }
+
     // ── Header summary cards ──
     var headerCards = [
-      { label: 'Entradas', value: totalEntries, icon: 'login', color: 'text-primary' },
-      { label: 'Salidas', value: totalExits, icon: 'logout', color: 'text-secondary' },
+      { label: 'Entradas', value: totalEntries, icon: 'login', color: 'text-primary', clsField: 'entries' },
+      { label: 'Salidas', value: totalExits, icon: 'logout', color: 'text-secondary', clsField: 'exits' },
       { label: 'Entidades Detectadas', value: totalEntities, icon: 'groups', color: 'text-tertiary' },
       { label: 'Eventos Totales', value: totalEvents, icon: 'timeline', color: 'text-primary' },
     ];
     var headerHtml = '<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">' + headerCards.map(function(c) {
-      return '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-2"><p class="text-label-caps font-label-caps text-secondary uppercase">' + c.label + '</p><span class="material-symbols-outlined ' + c.color + ' opacity-60" style="font-size:20px">' + c.icon + '</span></div><p class="text-headline-md font-headline-md font-bold ' + c.color + '">' + c.value + '</p></div>';
+      var clsBreakdown = c.clsField ? classBadges(classAgg, c.clsField) : '';
+      return '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-2"><p class="text-label-caps font-label-caps text-secondary uppercase">' + c.label + '</p><span class="material-symbols-outlined ' + c.color + ' opacity-60" style="font-size:20px">' + c.icon + '</span></div><p class="text-headline-md font-headline-md font-bold ' + c.color + '">' + c.value + '</p>' + clsBreakdown + '</div>';
     }).join('') + '</div>';
 
     // ── Video + Info row (side by side) ──
@@ -2339,9 +2360,11 @@ async function viewAnalysis(id) {
       for (var m = 0; m < data.metrics.length; m++) {
         var met = data.metrics[m];
         var roiName = met.roi_id ? met.roi_id.substring(0, 8) + '...' : '-';
+        var className = met.object_class || 'person';
         var dwellStr = met.avg_dwell_seconds ? met.avg_dwell_seconds.toFixed(1) + 's' : '-';
         metricsRows += '<tr class="border-b border-outline-variant">' +
           '<td class="p-3 text-body-sm font-body-sm text-on-surface">' + esc(roiName) + '</td>' +
+          '<td class="p-3 text-body-sm text-center"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-container text-on-surface">' + esc(className) + '</span></td>' +
           '<td class="p-3 text-body-sm text-center font-data-mono text-primary font-bold">' + (met.entries || 0) + '</td>' +
           '<td class="p-3 text-body-sm text-center font-data-mono text-secondary font-bold">' + (met.exits || 0) + '</td>' +
           '<td class="p-3 text-body-sm text-center font-data-mono text-on-surface-variant">' + (met.max_occupancy || 0) + '</td>' +
@@ -2349,7 +2372,7 @@ async function viewAnalysis(id) {
       }
     }
     var metricsTable = metricsRows
-      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 mb-6"><h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Métricas por Área (ROI)</h4><div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">ROI</th><th class="p-3 font-medium text-center">Entradas</th><th class="p-3 font-medium text-center">Salidas</th><th class="p-3 font-medium text-center">Pico</th><th class="p-3 font-medium text-center">Prom. Perm.</th></tr></thead><tbody>' + metricsRows + '</tbody></table></div></div>'
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 mb-6"><h4 class="text-label-caps font-label-caps text-secondary uppercase mb-4">Métricas por Área (ROI)</h4><div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">ROI</th><th class="p-3 font-medium text-center">Clase</th><th class="p-3 font-medium text-center">Entradas</th><th class="p-3 font-medium text-center">Salidas</th><th class="p-3 font-medium text-center">Pico</th><th class="p-3 font-medium text-center">Prom. Perm.</th></tr></thead><tbody>' + metricsRows + '</tbody></table></div></div>'
       : '';
 
     // ── Individual event log ──
@@ -2362,10 +2385,12 @@ async function viewAnalysis(id) {
           ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-primary"><span class="w-2 h-2 bg-primary rounded-full"></span>ENTRADA</span>'
           : '<span class="inline-flex items-center gap-1 text-xs font-medium text-secondary"><span class="w-2 h-2 bg-secondary rounded-full"></span>SALIDA</span>';
         var dwellStr2 = ev.dwell_seconds ? formatDwell(ev.dwell_seconds) : '-';
+        var evClass = ev.object_class || 'person';
         eventRows += '<tr class="border-b border-outline-variant hover:bg-surface-container/50 transition-colors">' +
           '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + evTime + '</td>' +
           '<td class="p-3">' + evTypeIcon + '</td>' +
           '<td class="p-3 text-body-sm text-on-surface">' + esc(ev.roi_name || '-') + '</td>' +
+          '<td class="p-3 text-body-sm"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-container text-on-surface">' + esc(evClass) + '</span></td>' +
           '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + (ev.track_id != null ? 'ID ' + ev.track_id : '-') + '</td>' +
           '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + (ev.frame_number != null ? '#' + ev.frame_number : '-') + '</td>' +
           '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant text-right">' + dwellStr2 + '</td></tr>';
@@ -2373,7 +2398,7 @@ async function viewAnalysis(id) {
     }
 
     var eventSection = eventRows
-      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-4"><h4 class="text-label-caps font-label-caps text-secondary uppercase">Registro de Eventos</h4><span class="text-body-sm text-on-surface-variant">' + data.zone_events.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">Hora</th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Área</th><th class="p-3 font-medium">ID Track</th><th class="p-3 font-medium">Frame</th><th class="p-3 font-medium text-right">Perm.</th></tr></thead><tbody>' + eventRows + '</tbody></table></div></div>'
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-4"><h4 class="text-label-caps font-label-caps text-secondary uppercase">Registro de Eventos</h4><span class="text-body-sm text-on-surface-variant">' + data.zone_events.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">Hora</th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Área</th><th class="p-3 font-medium">Clase</th><th class="p-3 font-medium">ID Track</th><th class="p-3 font-medium">Frame</th><th class="p-3 font-medium text-right">Perm.</th></tr></thead><tbody>' + eventRows + '</tbody></table></div></div>'
       : '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><p class="text-body-sm text-on-surface-variant text-center py-4">Sin eventos registrados para este analisis.</p></div>';
 
     var detailHtml = headerHtml + infoHtml + metricsTable + eventSection;
