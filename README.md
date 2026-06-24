@@ -54,26 +54,36 @@ Sustituye la versión anterior del proyecto basada en notebook (`notebooks/ml_go
 ### Detección y tracking
 - 🤖 **YOLOv11n** (Ultralytics) — single model, CPU-only
 - 🎯 **ByteTrack** integrado via `bytetrack.yaml` con `persist=True`
-- 🏷️ **4 clases trackables** — `person`, `car`, `bicycle`, `backpack` (default: `person`)
+- 🏷️ **80 clases COCO** filtrables por ROI (`observed_classes`) — default: `person`. Cualquier subset de las 80 clases puede trackearse y asociarse a un ROI.
 
 ### Regiones de Interés (ROIs)
 - 📐 **Polígonos interactivos** dibujados en la UI con click-to-add
 - 🚪 **Detección de entry/exit** — `pointPolygonTest` + intersección de segmentos para cruces fronterizos
 - 📊 **Snapshots de ocupación** cada 30 frames
 - ⏱️ **Dwell time** automático al salir de la zona
+- 🏷️ **Multi-class filtering** — cada ROI declara `observed_classes` (subset de COCO 80) para reducir falsos positivos
+
+### Alert Rules por ROI
+- 🎯 **5 tipos de regla** — `OccupancyHigh`, `OccupancyLow`, `DwellExceeded`, `ObjectCountExceeded`, `ForbiddenClassDetected`
+- 📐 **Métricas comparables** — `count`, `occupancy`, `dwell_seconds` con operadores `>`, `<`, `>=`, `<=`, `==`, `between`
+- 🚨 **3 niveles de severidad** — `info` (azul), `warning` (ámbar), `critical` (rojo)
+- ⏰ **Ventana horaria opcional** — `time_from` / `time_to` para reglas activas solo en cierto rango del día
+- 🎚️ **Per-class thresholds** — `class_id` opcional para reglas que aplican solo a una clase específica
+- 📊 **Visualización en análisis** — bloque "Reglas evaluadas" arriba del log de eventos, badge `DISPARADA`/`cumplida` por regla
 
 ### Persistencia y métricas
-- 💾 **8 tablas PostgreSQL** — sources, ROIs, sessions, tracked entities, snapshots, events, metric snapshots, rules
+- 💾 **9 tablas PostgreSQL** — sources, ROIs, alert_rules, sessions, tracked entities, snapshots, events, metric snapshots, class catalog
 - ⚡ **Batch INSERTs paralelos** (3 hilos) en `ThreadPoolExecutor` para persistencia rápida
 - 🔒 **Unique constraints** que previenen duplicados: `(session_id, track_id)` y `(session_id, roi_id, frame_number)`
 - 📈 **MetricSnapshot** derivado: entries, exits, max_occupancy, avg_dwell por ROI por sesión
 
 ### UI / SPA (5 tabs)
-- **Fuentes** — grid de video sources con preview + creación interactiva
-- **Dashboard** — 11 métricas agregadas (totales, success rate, top ROIs, distribución horaria)
-- **Historial** — lista de análisis con duración, total entities, total events, status
+- **Fuentes** — grid de video sources con preview + creación interactiva de ROIs + alert rules
+- **Panel / Dashboard** — 11 métricas agregadas + breakdown de alerts por severidad + timeline cronológica
+- **Trabajos / Historial** — lista de análisis con duración, total entities, total events, status, Ver Detalle / Re-ejecutar
 - **Logs** — recursos del sistema (CPU, RAM, disco, threads) + eventos problemáticos (sessions failed, overcapacity, dwell_exceeded)
-- **Documentación** — vista in-app con `<details>` sobre cada componente del stack
+- **Chatbot** — asistente conversacional (Cohere API) que responde preguntas sobre cualquier reporte
+- **Documentación in-app** — vista con `<details>` sobre cada componente del stack
 
 ### Output
 - 🎬 **Video anotado** en H.264 (`avc1`) con bounding boxes, IDs, ROI overlays y panel de stats
@@ -130,7 +140,9 @@ Sustituye la versión anterior del proyecto basada en notebook (`notebooks/ml_go
    docker compose up -d --build
    ```
 
-5. **Abrir en el navegador**
+5. **Bind mount de uploads**: el stack monta `./uploads:/app/uploads`. Videos preexistentes pueden copiarse a `./uploads/` y referenciarse con `source_uri: 'uploads/<file>'`.
+
+6. **Abrir en el navegador**
    - App: <http://localhost:8000>
    - Dozzle (logs UI): <http://localhost:8080>
 
@@ -181,7 +193,9 @@ ML-GOTECHY-G7-MAJDA-ORTEGA/
 │   ├── services/
 │   │   ├── analytics_service.py        # AnalyticsService + CounterEngine (YOLO + ROI)
 │   │   ├── metrics_service.py          # MetricsService (11 queries para dashboard)
-│   │   └── report_service.py           # Genera reporte HTML estático por análisis
+│   │   ├── rule_evaluator.py           # Evalúa alert_rules por snapshot, dispara zone_events
+│   │   ├── report_service.py           # Genera reporte HTML estático por análisis
+│   │   └── cohere_service.py           # Chatbot: Cohere API client
 │   ├── providers/                      # FrameProvider ABC + 4 implementaciones
 │   │   ├── base.py
 │   │   ├── factory.py                  # VideoSourceFactory.create() por source_type
@@ -190,21 +204,22 @@ ML-GOTECHY-G7-MAJDA-ORTEGA/
 │   │   ├── youtube_live.py             # Live con auto-reconnect
 │   │   ├── rtsp.py                     # RTSP con auto-reconnect
 │   │   └── youtube_utils.py            # yt-dlp wrapper + format candidates
-│   ├── repositories/                   # 8 repos (psycopg2 directos, sin ORM)
+│   ├── repositories/                   # 9 repos (psycopg2 directos, sin ORM)
 │   │   ├── db.py                       # ThreadedConnectionPool (min=2, max=20)
 │   │   ├── video_source_repo.py
 │   │   ├── roi_repo.py
 │   │   ├── session_repo.py
 │   │   ├── tracked_entity_repo.py      # batch INSERT con ON CONFLICT
 │   │   ├── occupancy_snapshot_repo.py  # batch INSERT con ON CONFLICT DO NOTHING
-│   │   ├── zone_event_repo.py          # batch INSERT
+│   │   ├── zone_event_repo.py          # batch INSERT (metadata es JSONB)
 │   │   ├── metric_snapshot_repo.py
-│   │   └── rule_repo.py
+│   │   ├── alert_rule_repo.py          # alert_rule CRUD
+│   │   └── class_catalog_repo.py       # COCO class catalog
 │   ├── models/
 │   │   ├── contracts.py                # Dataclasses (ROIConfig, VideoSourceConfig, etc.)
 │   │   └── enums.py                    # SourceType, EventType, TrackingClass, TimestampMode
 │   ├── utils/
-│   │   ├── pages.py                    # SPA completa (HTML + JS, ~1500 líneas)
+│   │   ├── pages.py                    # SPA completa (HTML + JS, ~2500 líneas)
 │   │   ├── components.py
 │   │   └── html_utils.py
 │   └── inference/
@@ -244,16 +259,28 @@ ML-GOTECHY-G7-MAJDA-ORTEGA/
 | `PUT` | `/api/rois/<id>/config` | Actualiza flags: `detect_entry`, `detect_exit`, `detect_occupancy`, `detect_dwell`, `alerts` |
 | `DELETE` | `/api/rois/<id>` | Elimina un ROI |
 
+### Alert Rules
+
+| Method | Path | Descripción |
+|---|---|---|
+| `GET` | `/api/rois/<id>/alert-rules` | Lista alert rules activas (e inactivas) para un ROI |
+| `POST` | `/api/rois/<id>/alert-rules` | Crea rule: `name`, `metric`, `operator`, `threshold`, `event_type`, `severity`, `class_id?`, `time_from?`, `time_to?` |
+| `PUT` | `/api/alert-rules/<id>` | Update parcial de cualquier campo |
+| `POST` | `/api/alert-rules/<id>/toggle` | Toggle `active` (enable/disable) |
+| `DELETE` | `/api/alert-rules/<id>` | Elimina rule |
+| `GET` | `/api/rois/<id>/metrics/summary` | Mini-stats del último session (entries, exits, max_occupancy, top_rules) |
+
 ### Analysis
 
 | Method | Path | Descripción |
 |---|---|---|
-| `POST` | `/process` | Inicia análisis en background thread. Body JSON: `video_source_id`, `tracking_classes`, `frame_skip`, `max_seconds`, `output.annotated_video` |
+| `POST` | `/process` | Inicia análisis en background thread. Body JSON: `video_source_id`, `tracking_classes`, `frame_skip`, `max_seconds`, `output_video` |
 | `GET` | `/api/job/status` | Status del job en curso: `running`, `progress`, `frames_done`, `total_frames`, `seconds_done`, `message`, `error` |
 | `GET` | `/api/sessions` | Lista de sesiones de análisis con métricas agregadas |
 | `GET` | `/api/sessions/<id>/report` | Reporte HTML estático del análisis |
-| `GET` | `/api/analyses` | Lista limpia de análisis (para la tab Historial) |
-| `GET` | `/api/analyses/<id>` | Detalle de análisis: metrics, zone_events, video path |
+| `GET` | `/api/sessions/<id>/tracks` | Tracks de la sesión (entidades detectadas con clase, frame first/last seen) |
+| `GET` | `/api/analyses` | Lista limpia de análisis (para la tab Trabajos) |
+| `GET` | `/api/analyses/<id>` | Detalle: `metrics`, `zone_events` (con `severity`/`rule_name`/`value`/`rule_id`), `class_summary`, `alert_rules_by_roi` (con flag `triggered`) |
 
 ### System
 
@@ -289,7 +316,8 @@ Cuando se hace `POST /process`, la app ejecuta el siguiente flujo en un thread d
 5. _persist_session() [en ThreadPoolExecutor(3)]
    ├─ entity_repo.save_all()     ─→ batch INSERT con ON CONFLICT (session_id, track_id)
    ├─ snapshot_repo.create_batch() ─→ batch INSERT con ON CONFLICT (session_id, roi_id, frame_number)
-   └─ zone_repo.create_batch()   ─→ batch INSERT
+   ├─ zone_repo.create_batch()   ─→ batch INSERT (entry/exit + alert-triggered con metadata JSONB)
+   └─ RuleEvaluator.evaluate() en cada snapshot ─→ evalúa alert_rules activas; dispara zone_events con event_type=dwell_exceeded/overcapacity + metadata={severity, rule_name, value}
 6. MetricsService.compute(session_id)               ─→ deriva metric_snapshot por ROI
 7. generate_report_html(session_id)                 ─→ escribe reports/<id>.html
 8. _job_progress["running"] = False                 ─→ UI cierra el modal de progreso
@@ -305,11 +333,11 @@ Cuando se hace `POST /process`, la app ejecuta el siguiente flujo en un thread d
 |---|---|
 | `video_source` | Fuentes de video configuradas (file, youtube_vod, youtube_live, rtsp) |
 | `roi` | Regiones de Interés poligonales con flags de detección (entry, exit, occupancy, dwell) |
-| `roi_event_rule` | Reglas de alertas por ROI (overcapacity, dwell_exceeded con threshold) |
+| `alert_rule` | Reglas de alertas por ROI. Columnas: `metric`, `operator`, `threshold`, `threshold2`, `event_type` (OccupancyHigh/DwellExceeded/...), `severity` (info/warning/critical), `class_id?`, `time_from?`, `time_to?`, `active` |
 | `detection_session` | Una ejecución del pipeline — `started_at`, `ended_at`, `status`, `output_video_path` |
 | `tracked_entity` | UNIQUE `(session_id, track_id)` — IDs persistentes de ByteTrack |
 | `roi_occupancy_snapshot` | UNIQUE `(session_id, roi_id, frame_number)` — estado por ROI cada 30 frames |
-| `zone_event` | Eventos puntuales: `entry`, `exit`, `overcapacity`, `dwell_exceeded` |
+| `zone_event` | Eventos puntuales: `entry`, `exit`, `overcapacity`, `dwell_exceeded`. Columna `metadata` JSONB con `severity`, `rule_name`, `value`, `event_type`, `threshold`, `operator` para eventos disparados por alert rules |
 | `metric_snapshot` | Derivado: entries, exits, max_occupancy, avg_dwell por ROI por sesión |
 
 **Inicializar**: `psql $NEON_DB_URL < schema.sql` (o `scripts/init_db.sql` que es idempotente).
