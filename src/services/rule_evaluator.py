@@ -6,6 +6,14 @@ from src.models.contracts import ZoneEventRecord
 from src.models.enums import EventType
 
 
+_EVENT_TYPE_MAP = {
+    "OccupancyHigh": EventType.OVERCAPACITY,
+    "OccupancyLow": EventType.OVERCAPACITY,
+    "DwellExceeded": EventType.DWELL_EXCEEDED,
+    "ObjectCountExceeded": EventType.OVERCAPACITY,
+    "ForbiddenClassDetected": EventType.OVERCAPACITY,
+}
+
 # Lazy cache: class_id (int) -> class name (str).
 # Populated on first evaluate() call from catalog repo.
 _CLASS_BY_ID: dict[int, str] = {}
@@ -68,7 +76,7 @@ class RuleEvaluator:
             new_events.append(
                 ZoneEventRecord(
                     roi_id=self.roi_id,
-                    event_type=EventType.OVERCAPACITY,  # bucket — the event_type from rule goes in metadata
+                    event_type=_EVENT_TYPE_MAP.get(rule["event_type"], EventType.OVERCAPACITY),
                     occurred_at=timestamp,
                     frame_number=frame_index,
                     object_class=cls_name,

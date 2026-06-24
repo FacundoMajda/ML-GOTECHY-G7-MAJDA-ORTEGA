@@ -247,12 +247,18 @@ class CounterEngine:
                 and self.entity_states[tid].object_class in observed
             ]
             class_counts: dict[str, int] = {}
+            max_dwell = 0.0
             for tid in inside_ids:
                 state = self.entity_states.get(tid)
                 if state is None:
                     continue
                 cls = state.object_class
                 class_counts[cls] = class_counts.get(cls, 0) + 1
+                entry_start = state.roi_entry_started_at.get(roi_id)
+                if entry_start:
+                    dwell = (timestamp - entry_start).total_seconds()
+                    if dwell > max_dwell:
+                        max_dwell = dwell
             self.snapshots.append(
                 OccupancySnapshot(
                     roi_id=roi_id,
@@ -274,6 +280,7 @@ class CounterEngine:
                     frame_index=self._frame_index,
                     class_counts=class_counts,
                     current_occupancy=len(inside_ids),
+                    last_dwell_seconds=max_dwell if max_dwell > 0 else None,
                 )
                 if triggered:
                     print(f"[DEBUG] CounterEngine._take_snapshot: {len(triggered)} rule events triggered for roi={roi_id}", flush=True)
