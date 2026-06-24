@@ -1049,7 +1049,6 @@ function renderRuleCard(roiId, r) {
     <div class="text-body-sm font-body-sm text-on-surface-variant ml-7">
       SI <strong>${r.metric}(${clsLabel})</strong> ${opLabel} <strong>${valLabel}</strong>
       → <span class="font-bold">${esc(r.event_type)}</span>
-      ${r.time_from ? ' · '+r.time_from+'-'+r.time_to : ''}
     </div>
     <div id="rule-form-${rid}" class="hidden mt-3 border-t border-outline-variant pt-3"></div>
   </div>`;
@@ -1126,8 +1125,6 @@ async function saveRuleForm(roiId, ruleId) {
   const threshold2 = document.getElementById(prefix + '-threshold2');
   const severity = document.getElementById(prefix + '-severity');
   const eventType = document.getElementById(prefix + '-event');
-  const timeFrom = document.getElementById(prefix + '-time-from');
-  const timeTo = document.getElementById(prefix + '-time-to');
   if (!name || !metric || !operator || !threshold || !severity || !eventType) return;
   if (!name.value.trim()) { alert('Nombre requerido'); return; }
   const body = {
@@ -1139,8 +1136,6 @@ async function saveRuleForm(roiId, ruleId) {
     threshold2: threshold2 && threshold2.value ? parseFloat(threshold2.value) : null,
     severity: severity.value,
     event_type: eventType.value,
-    time_from: timeFrom && timeFrom.value ? timeFrom.value : null,
-    time_to: timeTo && timeTo.value ? timeTo.value : null,
   };
   try {
     let res;
@@ -1189,10 +1184,6 @@ function ruleFormHTML(roiId, rule) {
     <div class="grid grid-cols-3 gap-2">
       <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Severidad</label><select id="${prefix}-severity" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm">${severities}</select></div>
       <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Evento</label><select id="${prefix}-event" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm">${eventTypes}</select></div>
-      <div class="grid grid-cols-2 gap-1">
-        <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Desde</label><input id="${prefix}-time-from" type="time" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm" value="${r.time_from||''}"/></div>
-        <div><label class="text-label-caps font-label-caps text-on-surface-variant block mb-0.5">Hasta</label><input id="${prefix}-time-to" type="time" class="w-full border border-outline-variant rounded px-2 py-1 text-body-sm" value="${r.time_to||''}"/></div>
-      </div>
     </div>
     <div class="flex gap-2 justify-end pt-1">
       <button type="button" onclick="cancelRuleForm('${roiId}','${r.id||''}')" class="border border-outline-variant text-on-surface-variant px-3 py-1.5 rounded-lg text-body-sm font-body-sm hover:bg-surface-container transition-all">Cancelar</button>
@@ -1896,11 +1887,15 @@ function renderRecentSessions(sessions) {
       ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-primary"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span>Completado</span>'
       : '<span class="inline-flex items-center gap-1 text-xs font-medium text-error"><span class="w-1.5 h-1.5 bg-error rounded-full"></span>Fallido</span>';
     const date = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
+    const tracksBtn = s.status === 'completed'
+      ? `<button onclick="openTracksModal('${esc(s.id)}')" class="text-label-caps font-label-caps text-primary hover:underline">Tracks</button>`
+      : '<span class="text-on-surface-variant text-body-sm">-</span>';
     return `<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors">
       <td class="p-3 text-body-sm font-body-sm">${esc(s.source_name || '-')}</td>
       <td class="p-3 text-body-sm text-on-surface-variant">${date}</td>
       <td class="p-3 text-body-sm text-on-surface-variant font-data-mono">${dur}</td>
       <td class="p-3">${statusBadge}</td>
+      <td class="p-3 text-right">${tracksBtn}</td>
     </tr>`;
   }).join('');
   el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-left"><thead>
@@ -1909,40 +1904,86 @@ function renderRecentSessions(sessions) {
       <th class="p-3 font-medium">Fecha</th>
       <th class="p-3 font-medium">Duracion</th>
       <th class="p-3 font-medium">Estado</th>
+      <th class="p-3 font-medium text-right">Top Tracks</th>
     </tr>
   </thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function openTracksModal(sessionId) {
+  const existing = document.getElementById('tracks-modal');
+  if (existing) existing.remove();
+  const html = `<div id="tracks-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onclick="if(event.target.id==='tracks-modal') this.remove()">
+    <div class="bg-surface-container-lowest rounded-2xl p-5 w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-headline-md font-headline-md font-bold text-on-surface">Top Tracks (por dwell)</h3>
+        <button onclick="document.getElementById('tracks-modal').remove()" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface p-1">close</button>
+      </div>
+      <div id="tracks-modal-body"><div class="text-center py-8 text-on-surface-variant">Cargando...</div></div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  fetch('/api/sessions/' + sessionId + '/tracks').then(r => r.json()).then(data => {
+    const tracks = data.tracks || [];
+    const body = document.getElementById('tracks-modal-body');
+    if (tracks.length === 0) { body.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-8">Sin tracks.</p>'; return; }
+    const top10 = tracks.slice(0, 10);
+    const maxDwell = Math.max(...top10.map(t => t.max_dwell_seconds), 1);
+    body.innerHTML = '<div class="space-y-2">' + top10.map(t => {
+      const dwellStr = formatDwell(t.max_dwell_seconds);
+      const pct = (t.max_dwell_seconds / maxDwell) * 100;
+      return `<div class="border border-outline-variant rounded-lg p-2 bg-surface-container-lowest">
+        <div class="flex items-center justify-between text-body-sm font-body-sm mb-1">
+          <span class="flex items-center gap-2"><span class="font-data-mono text-on-surface-variant">#${esc(t.track_id)}</span><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-container text-on-surface">${esc(t.object_class)}</span></span>
+          <span class="font-bold text-primary">${dwellStr}</span>
+        </div>
+        <div class="w-full h-1.5 bg-surface-container-higher rounded-full overflow-hidden">
+          <div class="bg-primary h-full" style="width:${pct}%"></div>
+        </div>
+        <div class="flex justify-between text-body-sm text-on-surface-variant mt-1">
+          <span>↓${t.entries} ↑${t.exits}</span>
+          <span>${esc(t.first_seen_at ? new Date(t.first_seen_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '-')}</span>
+        </div>
+      </div>`;
+    }).join('') + '</div>';
+  }).catch(() => { document.getElementById('tracks-modal-body').innerHTML = '<p class="text-body-sm text-error text-center py-8">Error cargando.</p>'; });
+}
+
 function renderHourlyChart(hourly) {
+  // Stacked bars por clase via /api/analytics/timeline
   const el = document.getElementById('dash-hourly-chart');
   if (!el) return;
-  if (!hourly || hourly.length === 0) {
-    el.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-8">Sin datos de distribucion horaria.</p>';
-    return;
-  }
-  const maxVal = Math.max(...hourly.map(h => Math.max(h.entries || 0, h.exits || 0)), 1);
-  const full = Array.from({length: 24}, (_, i) => {
-    const found = hourly.find(h => h.hour === i);
-    return found || { hour: i, entries: 0, exits: 0 };
-  });
-  el.innerHTML = `<div class="h-full flex items-end gap-px relative">
-    <div class="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
-      <div class="border-t border-outline h-px w-full"></div>
-      <div class="border-t border-outline h-px w-full"></div>
-      <div class="border-t border-outline h-px w-full"></div>
-    </div>
-    ${full.map(h => {
-      const entryPct = Math.max((h.entries / maxVal) * 100, 2);
-      const exitPct = Math.max((h.exits / maxVal) * 100, 2);
-      return `<div class="flex-1 flex flex-col items-center justify-end self-stretch relative z-10" style="padding-bottom:14px">
-        <div class="flex gap-px items-end justify-center flex-1 w-full">
-          <div class="w-[7px] bg-primary rounded-t-sm transition-all min-h-[2px]" style="height:${entryPct}%" title="${String(h.hour).padStart(2,'0')}:00 Entradas: ${h.entries}"></div>
-          <div class="w-[7px] bg-secondary rounded-t-sm transition-all min-h-[2px]" style="height:${exitPct}%" title="${String(h.hour).padStart(2,'0')}:00 Salidas: ${h.exits}"></div>
-        </div>
-        ${h.hour % 4 === 0 ? `<span class="text-[8px] text-outline absolute bottom-0">${String(h.hour).padStart(2,'0')}</span>` : ''}
-      </div>`;
-    }).join('')}
-  </div>`;
+  el.innerHTML = '<div class="h-full flex items-center justify-center text-on-surface-variant text-body-sm">Cargando timeline...</div>';
+  fetch('/api/analytics/timeline?hours=24').then(r => r.json()).then(data => {
+    const timeline = data.timeline || {};
+    const classes = data.classes || [];
+    const clsColors = ['#005d54','#9f4123','#b1c5ff','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+    const buckets = Object.keys(timeline).sort();
+    if (buckets.length === 0) {
+      el.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-8">Sin datos en las ultimas 24h.</p>';
+      return;
+    }
+    let maxVal = 1;
+    buckets.forEach(b => { const t = Object.values(timeline[b] || {}).reduce((a, b) => a + b, 0); if (t > maxVal) maxVal = t; });
+    el.innerHTML = `<div class="flex flex-wrap gap-1 mb-2">${classes.map((c, i) => `<span class="inline-flex items-center gap-1 text-body-sm font-body-sm text-on-surface-variant"><span class="w-2 h-2 rounded-sm inline-block" style="background:${clsColors[i % clsColors.length]}"></span>${esc(c)}</span>`).join('')}</div>
+    <div class="h-32 flex items-end gap-px relative">
+      ${buckets.map(b => {
+        const counts = timeline[b] || {};
+        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+        const totalPct = Math.max((total / maxVal) * 100, 2);
+        const stacks = classes.map((c, i) => {
+          const v = counts[c] || 0;
+          if (!v) return '';
+          const h = (v / total) * totalPct;
+          return `<div class="w-full" style="height:${h}%;background:${clsColors[i % clsColors.length]}" title="${esc(c)}: ${v}"></div>`;
+        }).join('');
+        const hr = new Date(b).getHours();
+        return `<div class="flex-1 flex flex-col items-center justify-end" style="height:100%">
+          <div class="w-full flex flex-col-reverse" style="height:${totalPct}%;min-height:2px">${stacks}</div>
+          ${hr % 4 === 0 ? `<span class="text-[8px] text-outline">${String(hr).padStart(2,'0')}</span>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).catch(() => { el.innerHTML = '<p class="text-body-sm text-on-surface-variant text-center py-8">Error cargando timeline.</p>'; });
 }
 
 async function fetchAnalyses() {

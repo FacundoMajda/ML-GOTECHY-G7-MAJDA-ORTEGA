@@ -391,6 +391,67 @@ class MetricsService:
             for r in rows
         ]
 
+    def get_timeline(self, hours: int = 24) -> dict:
+        """Time series agrupado por hora y clase para visualizacion."""
+        rows = execute_query(
+            """
+            SELECT
+                date_trunc('hour', occurred_at) AS bucket,
+                COALESCE(NULLIF(object_class, ''), 'any') AS cls,
+                COUNT(*) AS cnt
+            FROM zone_event
+            WHERE event_type IN ('entry', 'exit')
+              AND occurred_at >= NOW() - make_interval(hours => %s)
+            GROUP BY 1, 2
+            ORDER BY 1
+            """,
+            (hours,),
+            fetch="all",
+        )
+        # Pivot: { "2026-06-23T18:00:00": { "person": 12, "car": 4 }, ... }
+        timeline: dict[str, dict[str, int]] = {}
+        classes: set[str] = set()
+        for bucket, cls, cnt in rows or []:
+            key = bucket.isoformat() if bucket else "unknown"
+            timeline.setdefault(key, {})[cls] = cnt
+            classes.add(cls)
+        return {
+            "hours": hours,
+            "classes": sorted(classes),
+            "timeline": timeline,
+        }
+
+    def get_session_tracks(self, session_id: str) -> list:
+        """Tracks de un session con entries/exits/dwell por track."""
+        rows = execute_query(
+            """
+            SELECT te.track_id::text,
+                   te.object_class,
+                   te.first_seen_at,
+                   te.last_seen_at,
+                   COUNT(*) FILTER (WHERE ze.event_type = 'entry') AS entries,
+                   COUNT(*) FILTER (WHERE ze.event_type = 'exit')  AS exits,
+                   COALESCE(MAX(ze.dwell_seconds), 0)             AS max_dwell
+            FROM tracked_entity te
+            LEFT JOIN zone_event ze ON ze.track_id = te.track_id AND ze.session_id = %s
+            WHERE te.session_id = %s
+            GROUP BY te.track_id, te.object_class, te.first_seen_at, te.last_seen_at
+            ORDER BY max_dwell DESC NULLS LAST
+            LIMIT 50
+            """,
+            (session_id, session_id),
+            fetch="all",
+        )
+        return [{
+            "track_id": r[0],
+            "object_class": r[1] or "person",
+            "first_seen_at": r[2].isoformat() if r[2] else None,
+            "last_seen_at": r[3].isoformat() if r[3] else None,
+            "entries": int(r[4] or 0),
+            "exits": int(r[5] or 0),
+            "max_dwell_seconds": float(r[6] or 0),
+        } for r in rows or []]
+
     def compare(self, session_a: uuid.UUID, session_b: uuid.UUID) -> dict:
         """Compare metrics between two sessions."""
         a_snaps = self.snapshot_repo.get_by_session(session_a)

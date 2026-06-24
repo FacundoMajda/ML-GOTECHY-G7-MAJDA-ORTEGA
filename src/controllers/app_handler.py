@@ -261,6 +261,8 @@ ROUTES_GET = {
     "/api/logs/data": "_api_logs_data",
     "/api/classes": "_api_classes",
     "/api/classes/grouped": "_api_classes_grouped",
+    "/api/analytics/timeline": "_api_analytics_timeline",
+    re.compile(r"^/api/sessions/([^/]+)/tracks$"): "_api_session_tracks",
     re.compile(r"^/api/rois/([^/]+)/alert-rules$"): "_api_list_alert_rules",
     re.compile(r"^/api/rois/([^/]+)/metrics/summary$"): "_api_roi_metrics_summary",
 }
@@ -528,6 +530,26 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             data = MetricsService().get_dashboard()
             self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_analytics_timeline(self) -> None:
+        """GET /api/analytics/timeline?hours=24 — eventos por hora y clase."""
+        try:
+            hours = int(parse_qs(urlparse(self.path).query).get('hours', ['24'])[0])
+            hours = max(1, min(hours, 168))
+            data = MetricsService().get_timeline(hours)
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_session_tracks(self, session_id: str) -> None:
+        """GET /api/sessions/<id>/tracks — top 50 tracks con dwell."""
+        try:
+            data = MetricsService().get_session_tracks(session_id)
+            self._send_json(200, {"session_id": session_id, "tracks": data})
         except Exception as e:
             traceback.print_exc()
             self._send_json(500, {'error': str(e)})
