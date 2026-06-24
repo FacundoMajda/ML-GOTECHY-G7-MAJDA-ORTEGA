@@ -2368,17 +2368,59 @@ async function viewAnalysis(id) {
     // ── Individual event log ──
     var eventRows = '';
     if (Array.isArray(data.zone_events) && data.zone_events.length > 0) {
-      for (var e = 0; e < data.zone_events.length; e++) {
-        var ev = data.zone_events[e];
+      var sortedEvents = data.zone_events.slice().sort(function(a, b) {
+        if (a.severity && !b.severity) return -1;
+        if (!a.severity && b.severity) return 1;
+        return 0;
+      });
+      for (var e = 0; e < sortedEvents.length; e++) {
+        var ev = sortedEvents[e];
         var evTime = ev.occurred_at ? new Date(ev.occurred_at).toLocaleTimeString() : '-';
         var evTypeIcon = ev.event_type === 'entry'
           ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-primary"><span class="w-2 h-2 bg-primary rounded-full"></span>ENTRADA</span>'
-          : '<span class="inline-flex items-center gap-1 text-xs font-medium text-secondary"><span class="w-2 h-2 bg-secondary rounded-full"></span>SALIDA</span>';
+          : ev.event_type === 'overcapacity'
+            ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-error"><span class="material-symbols-outlined" style="font-size:14px">warning</span>SOBREAFORO</span>'
+            : ev.event_type === 'dwell_exceeded'
+              ? '<span class="inline-flex items-center gap-1 text-xs font-medium text-amber-600"><span class="material-symbols-outlined" style="font-size:14px">timer</span>PERMANENCIA</span>'
+              : '<span class="inline-flex items-center gap-1 text-xs font-medium text-secondary"><span class="w-2 h-2 bg-secondary rounded-full"></span>SALIDA</span>';
         var dwellStr2 = ev.dwell_seconds ? formatDwell(ev.dwell_seconds) : '-';
         var evClass = ev.object_class || 'person';
-        eventRows += '<tr class="border-b border-outline-variant hover:bg-surface-container/50 transition-colors">' +
+        var sevBadge = ev.severity
+          ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium ' +
+            (ev.severity==='critical'?'bg-red-100 text-red-700':ev.severity==='warning'?'bg-amber-100 text-amber-700':'bg-blue-100 text-blue-700') +
+            '">' + ev.severity + '</span>'
+          : '';
+        var ruleLabel = ev.rule_name
+          ? '<span class="text-xs text-outline ml-1">' + esc(ev.rule_name) + '</span>'
+          : '';
+        var alertCell = '';
+        if (ev.severity) {
+          var sevStyle = ev.severity==='critical' ? 'bg-red-100 text-red-700 border-red-200'
+                        : ev.severity==='warning'  ? 'bg-amber-100 text-amber-700 border-amber-200'
+                        :                             'bg-blue-100 text-blue-700 border-blue-200';
+          var sevIcon = ev.severity==='critical' ? 'error'
+                      : ev.severity==='warning'  ? 'warning'
+                      :                             'info';
+          alertCell = '<div class="inline-flex flex-col gap-1">' +
+            '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium border ' + sevStyle + '">' +
+              '<span class="material-symbols-outlined" style="font-size:12px">' + sevIcon + '</span>' +
+              ev.severity +
+            '</span>' +
+            (ev.rule_name
+              ? '<span class="text-xs font-medium text-on-surface">' + esc(ev.rule_name) + '</span>'
+              : '') +
+            (ev.value != null
+              ? '<span class="text-xs text-on-surface-variant">valor: ' + esc(String(ev.value)) + '</span>'
+              : '') +
+          '</div>';
+        }
+        var rowClass = ev.severity
+          ? 'border-b border-outline-variant hover:bg-surface-container/50 transition-colors bg-red-50/40'
+          : 'border-b border-outline-variant hover:bg-surface-container/50 transition-colors';
+        eventRows += '<tr class="' + rowClass + '">' +
           '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + evTime + '</td>' +
           '<td class="p-3">' + evTypeIcon + '</td>' +
+          '<td class="p-3">' + alertCell + '</td>' +
           '<td class="p-3 text-body-sm text-on-surface">' + esc(ev.roi_name || '-') + '</td>' +
           '<td class="p-3 text-body-sm"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-surface-container text-on-surface">' + esc(evClass) + '</span></td>' +
           '<td class="p-3 text-body-sm font-data-mono text-on-surface-variant">' + (ev.track_id != null ? 'ID ' + ev.track_id : '-') + '</td>' +
@@ -2388,10 +2430,54 @@ async function viewAnalysis(id) {
     }
 
     var eventSection = eventRows
-      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-4"><h4 class="text-label-caps font-label-caps text-secondary uppercase">Registro de Eventos</h4><span class="text-body-sm text-on-surface-variant">' + data.zone_events.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">Hora</th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Área</th><th class="p-3 font-medium">Clase</th><th class="p-3 font-medium">ID Track</th><th class="p-3 font-medium">Frame</th><th class="p-3 font-medium text-right">Perm.</th></tr></thead><tbody>' + eventRows + '</tbody></table></div></div>'
+      ? '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><div class="flex items-center justify-between mb-4"><h4 class="text-label-caps font-label-caps text-secondary uppercase">Registro de Eventos</h4><span class="text-body-sm text-on-surface-variant">' + data.zone_events.length + ' eventos</span></div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left"><thead class="sticky top-0 bg-surface-container-lowest"><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase"><th class="p-3 font-medium">Hora</th><th class="p-3 font-medium">Tipo</th><th class="p-3 font-medium">Alerta</th><th class="p-3 font-medium">Área</th><th class="p-3 font-medium">Clase</th><th class="p-3 font-medium">ID Track</th><th class="p-3 font-medium">Frame</th><th class="p-3 font-medium text-right">Perm.</th></tr></thead><tbody>' + eventRows + '</tbody></table></div></div>'
       : '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5"><p class="text-body-sm text-on-surface-variant text-center py-4">Sin eventos registrados para este analisis.</p></div>';
 
-    var detailHtml = headerHtml + infoHtml + metricsTable + eventSection;
+    // ── Reglas evaluadas en este análisis ──
+    var rulesPanel = '';
+    var rulesByRoi = data.alert_rules_by_roi || {};
+    var rulesRoiIds = Object.keys(rulesByRoi);
+    if (rulesRoiIds.length > 0) {
+      var roiNameMap = {};
+      (data.metrics || []).forEach(function(m){ roiNameMap[String(m.roi_id)] = m.roi_name || m.roi_id; });
+      var totalRules = 0, triggeredRules = 0;
+      var ruleBlocks = rulesRoiIds.map(function(roiId) {
+        var rules = rulesByRoi[roiId];
+        var blockRows = rules.map(function(r) {
+          totalRules++;
+          if (r.triggered) triggeredRules++;
+          var firedBadge = r.triggered
+            ? '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 border border-red-200"><span class="material-symbols-outlined" style="font-size:12px">priority_high</span>DISPARADA</span>'
+            : '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-surface-container text-on-surface-variant"><span class="material-symbols-outlined" style="font-size:12px">check_circle</span>cumplida</span>';
+          var sevStyle = r.severity === 'critical' ? 'bg-red-100 text-red-700'
+                        : r.severity === 'warning'  ? 'bg-amber-100 text-amber-700'
+                        :                              'bg-blue-100 text-blue-700';
+          var opSym = {'>':'>', '<':'<', '>=':'≥', '<=':'≤', '==':'=', 'between':'entre'}[r.operator] || r.operator;
+          var metricLabel = (r.metric || '') + ' ' + opSym + ' ' + (r.threshold != null ? r.threshold : '');
+          return '<div class="flex items-center gap-3 py-1.5 border-b border-outline-variant last:border-0">' +
+            firedBadge +
+            '<span class="text-body-sm font-medium text-on-surface flex-1">' + esc(r.name || '-') + '</span>' +
+            '<span class="text-body-sm font-data-mono text-on-surface-variant">' + esc(metricLabel) + '</span>' +
+            '<span class="px-1.5 py-0.5 rounded text-xs font-medium ' + sevStyle + '">' + esc(r.severity) + '</span>' +
+          '</div>';
+        }).join('');
+        return '<div class="mb-3 last:mb-0">' +
+          '<p class="text-label-caps font-label-caps text-on-surface-variant mb-1">' + esc(roiNameMap[roiId] || roiId) + '</p>' +
+          blockRows +
+        '</div>';
+      }).join('');
+      rulesPanel = '<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 mb-6">' +
+        '<div class="flex items-center justify-between mb-3">' +
+          '<h4 class="text-label-caps font-label-caps text-secondary uppercase">Reglas evaluadas</h4>' +
+          '<span class="text-body-sm text-on-surface-variant">' + totalRules + ' regla' + (totalRules !== 1 ? 's' : '') +
+            (triggeredRules > 0 ? ' · <span class="text-red-600 font-medium">' + triggeredRules + ' disparada' + (triggeredRules !== 1 ? 's' : '') + '</span>' : ' · ninguna disparada') +
+          '</span>' +
+        '</div>' +
+        ruleBlocks +
+      '</div>';
+    }
+
+    var detailHtml = headerHtml + infoHtml + metricsTable + rulesPanel + eventSection;
     document.getElementById('analysis-detail-content').innerHTML = detailHtml;
     document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.add('hidden'); });
     var detailTab = document.getElementById('tab-analysis-detail');
