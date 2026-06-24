@@ -11,6 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH="/opt/venv/bin:$PATH"
 
+# gcc + libgl solo en builder. libgl lo dejan las wheels de opencv en link-time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
