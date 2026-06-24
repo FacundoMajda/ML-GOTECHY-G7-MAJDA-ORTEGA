@@ -500,9 +500,8 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </div>
 <div class="flex border-b border-outline-variant flex-shrink-0">
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab active" data-dtab="preview" onclick="switchDrawerTab('preview')">Preview</button>
-<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="areas" onclick="switchDrawerTab('areas')">Areas</button>
+<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="zonas" onclick="switchDrawerTab('zonas')">Zonas</button>
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="settings" onclick="switchDrawerTab('settings')">Settings</button>
-<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="rules" onclick="switchDrawerTab('rules')">Reglas</button>
 </div>
 <div class="flex-1 overflow-y-auto p-6">
 <div id="dt-preview" class="dt-content">
@@ -516,14 +515,11 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <button class="border border-outline text-on-surface-variant px-4 py-2 font-bold hover:bg-surface-container transition-all text-body-sm font-body-sm" onclick="cancelDrawing()">Cancel</button>
 </div>
 </div>
-<div id="dt-areas" class="dt-content hidden">
-<div id="areas-list"></div>
+<div id="dt-zonas" class="dt-content hidden">
+<div id="zonas-list"></div>
 </div>
 <div id="dt-settings" class="dt-content hidden">
 <div id="settings-content"></div>
-</div>
-<div id="dt-rules" class="dt-content hidden">
-<div id="rules-list"></div>
 </div>
 </div>
 <div class="p-4 border-t border-outline-variant flex-shrink-0">
@@ -786,9 +782,8 @@ function showDrawerTab(tab) {
   document.querySelectorAll('.dt-content').forEach(c => c.classList.add('hidden'));
   const el = document.getElementById('dt-' + tab);
   if (el) el.classList.remove('hidden');
-  if (tab === 'areas') renderAreasTab();
+  if (tab === 'zonas') renderZonasTab();
   if (tab === 'settings') renderSettingsTab();
-  if (tab === 'rules') renderRulesTab();
 }
 
 function drawExistingROIs() {
@@ -872,8 +867,8 @@ async function savePolygon() {
     document.getElementById('draw-actions').classList.add('hidden');
     document.getElementById('draw-area-btn').textContent = 'Draw Area';
     await fetchSources(true);
-    state.drawerTab = 'areas';
-    switchDrawerTab('areas');
+    state.drawerTab = 'zonas';
+    switchDrawerTab('zonas');
     renderDrawer();
   } catch (e) { alert('Network error: ' + e.message); }
 }
@@ -961,7 +956,7 @@ async function deleteROI(id, name) {
     }
     await fetchSources();
     renderDrawer();
-    renderAreasTab();
+    if (state.drawerTab === 'zonas') renderZonasTab();
   } catch (e) { alert('Error de red: ' + e.message); }
 }
 
@@ -1203,13 +1198,25 @@ function renderSettingsTab() {
   const src = getSource(state.selectedSourceId);
   if (!src) return;
   const settings = getSourceSettings(src.id);
+  const classes = window._CLASS_NAMES ? Object.entries(window._CLASS_NAMES) : [];
+  const selected = settings.tracking_classes || [];
   document.getElementById('settings-content').innerHTML = `
     <div class="mb-6">
-      <h3 class="text-label-caps font-label-caps text-on-surface-variant mb-3">TRACKING CLASSES</h3>
-      ${['person','car','bicycle','backpack'].map(cls => `
-        <label class="flex items-center gap-2 text-body-sm font-body-sm mb-2 cursor-pointer">
-          <input type="checkbox" class="settings-chk" data-class="${cls}" onchange="onTrackingClassChange('${esc(src.id)}')" ${(settings.tracking_classes||[]).includes(cls)?'checked':''}> ${cls.charAt(0).toUpperCase()+cls.slice(1)}
-        </label>`).join('')}
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-label-caps font-label-caps text-on-surface-variant">TRACKING CLASSES <span class="text-body-sm font-body-sm">(${selected.length}/${classes.length})</span></h3>
+        <div class="flex gap-1">
+          <button onclick="onSelectAllClasses()" class="text-label-caps font-label-caps text-primary hover:underline">Todos</button>
+          <span class="text-on-surface-variant">/</span>
+          <button onclick="onClearAllClasses()" class="text-label-caps font-label-caps text-on-surface-variant hover:underline">Ninguno</button>
+        </div>
+      </div>
+      <input type="text" id="settings-class-search" placeholder="Filtrar clases..." class="w-full border border-outline-variant rounded-lg p-2 text-body-sm font-body-sm mb-3 bg-background text-on-background" oninput="filterSettingsClasses()">
+      <div id="settings-classes-grid" class="max-h-64 overflow-y-auto border border-outline-variant rounded-lg p-2 bg-surface-container-lowest">
+        ${classes.map(([id, name]) => `
+          <label class="settings-cls-row flex items-center gap-2 text-body-sm font-body-sm mb-1 cursor-pointer" data-name="${esc(name).toLowerCase()}">
+            <input type="checkbox" class="settings-chk" data-class="${esc(name)}" onchange="onTrackingClassChange('${esc(src.id)}')" ${selected.includes(name)?'checked':''}> ${esc(name)}
+          </label>`).join('')}
+      </div>
     </div>
     <div class="mb-6">
       <h3 class="text-label-caps font-label-caps text-on-surface-variant mb-3">SEGUNDOS A ANALIZAR</h3>
@@ -1222,9 +1229,118 @@ function renderSettingsTab() {
     </div>`;
 }
 
+function onSelectAllClasses() {
+  document.querySelectorAll('.settings-chk').forEach(cb => cb.checked = true);
+  const settings = getSourceSettings(state.selectedSourceId);
+  settings.tracking_classes = Array.from(document.querySelectorAll('.settings-chk:checked')).map(cb => cb.dataset.class);
+}
+
+function onClearAllClasses() {
+  document.querySelectorAll('.settings-chk').forEach(cb => cb.checked = false);
+  const settings = getSourceSettings(state.selectedSourceId);
+  settings.tracking_classes = [];
+}
+
+function filterSettingsClasses() {
+  const q = document.getElementById('settings-class-search').value.toLowerCase();
+  document.querySelectorAll('.settings-cls-row').forEach(row => {
+    row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+
 function onTrackingClassChange(sourceId) {
   const settings = getSourceSettings(sourceId);
   settings.tracking_classes = Array.from(document.querySelectorAll('.settings-chk:checked')).map(cb => cb.dataset.class);
+}
+
+// ZONAS TAB — Unified ROI card (detection + observed classes + rules)
+async function renderZonasTab() {
+  await fetchAllRules();
+  const src = getSource(state.selectedSourceId);
+  const container = document.getElementById('zonas-list');
+  if (!src || !src.rois || src.rois.length === 0) {
+    container.innerHTML = '<div class="text-center py-8"><p class="text-body-md font-body-md text-on-surface-variant">No hay areas. Dibuja una en Preview.</p></div>';
+    return;
+  }
+  container.innerHTML = src.rois.map((roi, idx) => {
+    const eid = esc(roi.id);
+    const rules = rulesCache[roi.id] || [];
+    const roiColor = roiColors[idx % roiColors.length];
+    const observed = roi.observed_classes || [];
+    return `<details class="border-l-4 border border-outline-variant rounded-lg mb-3 overflow-hidden bg-surface-container-low" style="border-left-color:${roiColor.stroke}">
+      <summary class="flex items-center justify-between px-4 py-3 cursor-pointer font-bold text-body-md font-body-md hover:bg-surface-container transition-colors">
+        <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${roiColor.stroke}"></span>${esc(roi.name)}</span>
+        <span class="text-body-sm font-body-sm text-on-surface-variant">${rules.length} reglas</span>
+        <button onclick="event.stopPropagation(); deleteROI('${eid}', '${esc(roi.name)}')" class="p-1 rounded-full hover:bg-error-container text-on-surface-variant hover:text-error transition-all" title="Eliminar area">
+          <span class="material-symbols-outlined" style="font-size:16px">delete</span>
+        </button>
+      </summary>
+      <div class="px-4 py-3 border-t border-outline-variant space-y-4">
+        <div>
+          <h4 class="text-label-caps font-label-caps text-on-surface-variant mb-2">DETECCION</h4>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 text-body-sm font-body-sm cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_entry" ${roi.detect_entry ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Entrada</label>
+            <label class="flex items-center gap-2 text-body-sm font-body-sm cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_exit" ${roi.detect_exit ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Salida</label>
+            <label class="flex items-center gap-2 text-body-sm font-body-sm cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_occupancy" ${roi.detect_occupancy ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Ocupacion</label>
+            <label class="flex items-center gap-2 text-body-sm font-body-sm cursor-pointer"><input type="checkbox" class="area-chk" data-field="detect_dwell" ${roi.detect_dwell ? 'checked' : ''} onchange="saveROIConfig('${eid}')"> Permanencia</label>
+          </div>
+          <span id="config-msg-${eid}" class="text-body-sm font-body-sm text-primary"></span>
+        </div>
+        <div>
+          <h4 class="text-label-caps font-label-caps text-on-surface-variant mb-2">CLASES OBSERVADAS <span class="text-body-sm font-body-sm">(${observed.length})</span></h4>
+          <div class="max-h-40 overflow-y-auto border border-outline-variant rounded p-2 bg-surface-container-lowest">
+            ${renderClassChipsEditor(eid, observed)}
+          </div>
+        </div>
+        <div>
+          <h4 class="text-label-caps font-label-caps text-on-surface-variant mb-2">REGLAS <span class="text-body-sm font-body-sm">(${rules.length})</span></h4>
+          ${rules.length === 0 ? '<p class="text-body-sm font-body-sm text-on-surface-variant mb-2">Sin reglas todavia.</p>' : ''}
+          ${rules.map(r => renderRuleCardCompact(eid, r)).join('')}
+          <button onclick="showRuleForm('${eid}')" class="mt-2 border border-dashed border-outline-variant text-on-surface-variant hover:text-primary hover:border-primary px-3 py-2 rounded-lg w-full text-body-sm font-body-sm transition-all">+ Agregar regla</button>
+        </div>
+      </div>
+    </details>`;
+  }).join('');
+}
+
+function renderClassChipsEditor(roiId, observed) {
+  if (!window._CLASS_NAMES) return '<p class="text-body-sm font-body-sm text-on-surface-variant">Cargando clases...</p>';
+  const all = Object.entries(window._CLASS_NAMES);
+  return `<div class="flex flex-wrap gap-1.5">${all.map(([id, name]) => {
+    const checked = observed.includes(name);
+    return `<label class="cursor-pointer"><input type="checkbox" class="obs-cls-chk" data-roi="${roiId}" data-name="${esc(name)}" ${checked?'checked':''} onchange="onObservedClassChange('${roiId}')" hidden>
+      <span class="inline-block px-2 py-0.5 rounded-full text-body-sm font-body-sm ${checked?'bg-primary text-on-primary':'bg-surface-container text-on-surface-variant'}">${esc(name)}</span></label>`;
+  }).join('')}</div>`;
+}
+
+async function onObservedClassChange(roiId) {
+  const classes = Array.from(document.querySelectorAll('.obs-cls-chk[data-roi="'+roiId+'"]:checked')).map(cb => cb.dataset.name);
+  try {
+    await fetchJSON('/api/rois/' + roiId + '/observed-classes', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classes}) });
+  } catch (e) { alert('Error guardando clases: ' + e.message); }
+}
+
+function renderRuleCardCompact(roiId, r) {
+  const rid = esc(r.id);
+  const clsLabel = r.class_id != null ? (window._CLASS_NAMES && window._CLASS_NAMES[r.class_id] ? window._CLASS_NAMES[r.class_id] : 'class_'+r.class_id) : 'Todas';
+  const opLabel = r.operator === '==' ? '=' : r.operator;
+  const valLabel = r.operator === 'between' ? (r.threshold + ' — ' + (r.threshold2 || '-')) : r.threshold;
+  const sevBg = r.severity === 'critical' ? 'bg-red-100 text-red-700' : r.severity === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700';
+  const sevIcn = r.severity === 'critical' ? 'error' : r.severity === 'warning' ? 'warning' : 'info';
+  const activeBtn = r.active
+    ? `<button onclick="toggleRule('${rid}',false)" class="px-2 py-0.5 rounded-full text-xs font-bold bg-primary text-on-primary hover:brightness-110">Activa</button>`
+    : `<button onclick="toggleRule('${rid}',true)" class="px-2 py-0.5 rounded-full text-xs font-bold border border-outline-variant text-on-surface-variant hover:bg-surface-container">Inactiva</button>`;
+  return `<div class="rule-card border border-outline-variant rounded-lg p-2 mb-2 bg-surface-container-lowest" id="rule-${rid}">
+    <div class="flex items-center justify-between mb-1">
+      <div class="flex items-center gap-1.5 flex-1 min-w-0">
+        <span class="material-symbols-outlined ${sevBg} p-0.5 rounded-full" style="font-size:12px">${sevIcn}</span>
+        <span class="text-body-sm font-bold font-body-sm text-on-surface truncate">${esc(r.name)}</span>
+      </div>
+      <div class="flex items-center gap-1">${activeBtn}<button onclick="editRule('${rid}')" class="p-0.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined" style="font-size:14px">edit</span></button><button onclick="deleteRule('${rid}','${esc(r.name)}')" class="p-0.5 rounded hover:bg-error-container text-on-surface-variant hover:text-error"><span class="material-symbols-outlined" style="font-size:14px">delete</span></button></div>
+    </div>
+    <div class="text-body-sm font-body-sm text-on-surface-variant ml-6 truncate">${r.metric}(${clsLabel}) ${opLabel} ${valLabel} &rarr; <span class="font-bold">${esc(r.event_type)}</span></div>
+    <div id="rule-form-${rid}" class="hidden mt-2 border-t border-outline-variant pt-2"></div>
+  </div>`;
 }
 function updateSourceSetting(sourceId, key, value) { const settings = getSourceSettings(sourceId); settings[key] = value; }
 function toggleFullVideo(sourceId) {
