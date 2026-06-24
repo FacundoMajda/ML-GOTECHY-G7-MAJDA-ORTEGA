@@ -191,7 +191,7 @@ class CounterEngine:
             inside = self.is_inside(roi_id, foot_left, foot_right)
             prev = self.zone_state[roi_id].get(track_id)
 
-            if prev is False and inside and roi.detect_entry:
+            if prev in (None, False) and inside and roi.detect_entry:
                 self.zone_counts[roi_id]["entry"] += 1
                 self.zone_unique_tracks[roi_id]["entry"].add(track_id)
                 self.entity_states[track_id].roi_entry_started_at[roi_id] = now

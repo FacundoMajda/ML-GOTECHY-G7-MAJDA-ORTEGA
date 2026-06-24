@@ -104,6 +104,9 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 .progress-bar-fill { height: 100%; background: #005d54; border-radius: 3px; transition: width 0.3s ease; }
 .mini-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(245,158,11,0.3); border-top-color: #d97706; border-radius: 50%; animation: spin 0.6s linear infinite; }
 .bento-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
+@keyframes slide-in { 0% { opacity: 0; transform: translateX(100px); } 100% { opacity: 1; transform: translateX(0); } }
+.animate-slide-in { animation: slide-in 0.3s ease; }
+.z-70 { z-index: 70; }
 </style>
 </head>
 <body class="bg-background text-on-background" onload="switchTab('fuentes')">
@@ -115,7 +118,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <nav class="hidden md:flex gap-4">
 <a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('fuentes')">Fuentes</a>
 <a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('dashboard')">Dashboard</a>
-<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('historial')">Historial</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('jobs')">Jobs</a>
 <a class="text-on-surface-variant hover:text-primary transition-colors duration-200 text-body-md font-body-md cursor-pointer" onclick="switchTab('logs')">Logs</a>
 </nav>
 </div>
@@ -137,9 +140,9 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <span class="material-symbols-outlined" data-icon="videocam">videocam</span>
 <span class="text-label-caps font-label-caps">DASHBOARD</span>
 </a>
-<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="historial" onclick="switchTab('historial')">
-<span class="material-symbols-outlined" data-icon="description">description</span>
-<span class="text-label-caps font-label-caps">HISTORIAL</span>
+<a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="jobs" onclick="switchTab('jobs')">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="text-label-caps font-label-caps">JOBS</span>
 </a>
 <a class="flex items-center gap-3 px-6 py-3 cursor-pointer nav-link text-on-surface-variant hover:text-primary hover:bg-surface-variant transition-colors" data-tab="logs" onclick="switchTab('logs')">
 <span class="material-symbols-outlined" data-icon="terminal">terminal</span>
@@ -243,7 +246,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mb-8">
 <div class="flex items-center justify-between mb-4">
 <h4 class="text-label-caps font-label-caps text-secondary uppercase">Ultimos Analisis</h4>
-<button class="flex items-center gap-1 text-primary text-label-caps font-bold hover:underline" onclick="switchTab('historial')">
+<button class="flex items-center gap-1 text-primary text-label-caps font-bold hover:underline" onclick="switchTab('jobs')">
 <span class="material-symbols-outlined" style="font-size:16px">arrow_forward</span> Ver todos
 </button>
 </div>
@@ -293,24 +296,24 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 
 </div>
 
-<div id="tab-historial" class="tab-content hidden">
+<div id="tab-jobs" class="tab-content hidden">
 <div class="max-w-container-max mx-auto">
 <section class="mb-8 flex justify-between items-end">
 <div>
-<h1 class="text-headline-lg font-headline-lg text-on-background">Historial de Analisis</h1>
-<p class="text-body-md font-body-md text-outline">Todos los analisis ejecutados en el sistema.</p>
+<h1 class="text-headline-lg font-headline-lg text-on-background">Jobs</h1>
+<p class="text-body-md font-body-md text-outline">All analysis jobs executed on the system.</p>
 </div>
-<button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded font-bold hover:bg-primary-container transition-all" onclick="fetchAnalyses()">
-<span class="material-symbols-outlined" style="font-size:18px">refresh</span> Actualizar
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all" onclick="fetchSessions()">
+<span class="material-symbols-outlined" style="font-size:18px">refresh</span> Refresh
 </button>
 </section>
-<div id="analyses-error" class="hidden bg-error-container border border-error rounded-lg p-4 mb-4 flex items-center gap-3">
+<div id="jobs-error" class="hidden bg-error-container border border-error rounded-lg p-4 mb-4 flex items-center gap-3">
 <span class="material-symbols-outlined text-error" data-icon="error">error</span>
-<span id="analyses-error-msg" class="flex-1 text-body-md font-body-md text-on-error-container"></span>
-<button class="text-label-caps font-label-caps text-on-error-container font-bold hover:underline" onclick="fetchAnalyses()">Reintentar</button>
+<span id="jobs-error-msg" class="flex-1 text-body-md font-body-md text-on-error-container"></span>
+<button class="text-label-caps font-label-caps text-on-error-container font-bold hover:underline" onclick="fetchSessions()">Retry</button>
 </div>
-<div id="analyses-content">
-<div class="col-span-full text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Cargando...</p></div>
+<div id="jobs-content">
+<div class="text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Loading...</p></div>
 </div>
 </div>
 </div>
@@ -319,7 +322,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div class="max-w-container-max mx-auto">
 <section class="mb-6 flex items-center justify-between">
 <div class="flex items-center gap-4">
-<button class="flex items-center gap-2 text-primary hover:underline text-body-sm font-body-sm" onclick="switchTab('historial')">
+<button class="flex items-center gap-2 text-primary hover:underline text-body-sm font-body-sm" onclick="switchTab('jobs')">
 <span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> Volver
 </button>
 </div>
@@ -537,6 +540,9 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 </div>
 </div>
 
+<!-- TOAST -->
+<div id="toast-container" class="fixed bottom-6 right-6 z-70 flex flex-col gap-3 pointer-events-none" style="max-width:400px"></div>
+
 <script>
 const state = {
   tab: 'sources',
@@ -557,7 +563,16 @@ const state = {
 };
 let pendingSourceFile = null;
 
-const _TRACKING_CLASS_TO_YOLO = { person: 0, bicycle: 1, car: 2, backpack: 24 };
+// build inverted mapping name→id from _CLASS_NAMES (id→name)
+let _CLASS_NAME_TO_YOLO = {};
+function _rebuildClassMapping() {
+  _CLASS_NAME_TO_YOLO = {};
+  if (window._CLASS_NAMES) {
+    for (const [id, name] of Object.entries(window._CLASS_NAMES)) {
+      _CLASS_NAME_TO_YOLO[name] = parseInt(id, 10);
+    }
+  }
+}
 const roiColors = [
   { fill: 'rgba(0,93,84,0.15)', stroke: '#005d54' },
   { fill: 'rgba(16,185,129,0.15)', stroke: '#10b981' },
@@ -595,6 +610,19 @@ function fetchJSON(url, opts) {
   });
 }
 
+function showToast(msg, type) {
+  type = type || 'error';
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const icons = { error: 'error', success: 'check_circle', warning: 'warning', info: 'info' };
+  const borders = { error: 'border-l-4 border-error', success: 'border-l-4 border-primary', warning: 'border-l-4 border-amber-500', info: 'border-l-4 border-secondary' };
+  const el = document.createElement('div');
+  el.className = 'pointer-events-auto bg-surface-container-lowest border border-outline-variant rounded-xl shadow-lg px-4 py-3 flex items-start gap-3 animate-slide-in ' + (borders[type] || borders.error);
+  el.innerHTML = '<span class="material-symbols-outlined text-' + type + ' mt-0.5" style="font-size:20px">' + (icons[type] || icons.error) + '</span><span class="flex-1 text-body-sm font-body-sm text-on-surface">' + msg + '</span><button class="text-on-surface-variant hover:text-on-surface transition-colors" onclick="this.parentElement.remove()"><span class="material-symbols-outlined" style="font-size:18px">close</span></button>';
+  container.appendChild(el);
+  setTimeout(() => { if (el.parentElement) { el.style.opacity = '0'; el.style.transform = 'translateX(100px)'; el.style.transition = 'all 0.3s ease'; setTimeout(() => el.remove(), 300); } }, 4000);
+}
+
 function getSource(id) { return state.sources.find(s => s.id === id); }
 
 function formatDate(iso) { if (!iso) return '-'; const d = new Date(iso); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
@@ -624,7 +652,7 @@ function switchTab(tab) {
   });
   if (tab === 'fuentes') fetchSources();
   if (tab === 'dashboard') fetchDashboard();
-  if (tab === 'historial') fetchAnalyses();
+  if (tab === 'jobs') fetchSessions();
   if (tab === 'logs') { fetchLogs(); }
 }
 
@@ -881,7 +909,7 @@ async function savePolygon() {
   const areaName = 'Area ' + ((src.rois || []).length + 1);
   try {
     const res = await fetchJSON('/api/sources/' + src.id + '/rois', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name: areaName, polygon }) });
-    if (res.status >= 400) { alert('Error: ' + (res.data.error || 'Unknown')); return; }
+    if (res.status >= 400) { showToast('Error: ' + (res.data.error || 'Unknown'), 'error'); return; }
     state.drawMode = false; state.currentPolygon = [];
     document.getElementById('draw-actions').classList.add('hidden');
     document.getElementById('draw-area-btn').textContent = 'Draw Area';
@@ -889,7 +917,7 @@ async function savePolygon() {
     state.drawerTab = 'zonas';
     switchDrawerTab('zonas');
     renderDrawer();
-  } catch (e) { alert('Network error: ' + e.message); }
+  } catch (e) { showToast('Network error: ' + e.message, 'error'); }
 }
 
 function cancelDrawing() {
@@ -956,12 +984,12 @@ async function deleteSource(id, name) {
     const res = await fetch('/api/sources/' + id, { method: 'DELETE' });
     if (res.status >= 400) {
       const data = await res.json().catch(() => ({}));
-      alert('Error al eliminar: ' + (data.error || 'Error'));
+      showToast('Error al eliminar: ' + (data.error || 'Error'), 'error');
       return;
     }
     if (state.selectedSourceId === id) closeDrawer();
     fetchSources(true);
-  } catch (e) { alert('Error de red: ' + e.message); }
+  } catch (e) { showToast('Error de red: ' + e.message, 'error'); }
 }
 
 async function deleteROI(id, name) {
@@ -970,13 +998,13 @@ async function deleteROI(id, name) {
     const res = await fetch('/api/rois/' + id, { method: 'DELETE' });
     if (res.status >= 400) {
       const data = await res.json().catch(() => ({}));
-      alert('Error al eliminar: ' + (data.error || 'Error'));
+      showToast('Error al eliminar: ' + (data.error || 'Error'), 'error');
       return;
     }
     await fetchSources();
     renderDrawer();
     if (state.drawerTab === 'zonas') renderZonasTab();
-  } catch (e) { alert('Error de red: ' + e.message); }
+  } catch (e) { showToast('Error de red: ' + e.message, 'error'); }
 }
 
 // RULES TAB
@@ -1071,20 +1099,20 @@ async function toggleRule(ruleId, active) {
     const rule = rulesCache[roiId].find(r => r.id === ruleId);
     if (rule) rule.active = active;
     renderRulesTab();
-  } catch (e) { alert('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 async function deleteRule(ruleId, name) {
   if (!confirm('Eliminar la regla "' + name + '"?')) return;
   try {
     const res = await fetch('/api/alert-rules/' + ruleId, { method: 'DELETE' });
-    if (res.status >= 400) { alert('Error al eliminar'); return; }
+    if (res.status >= 400) { showToast('Error al eliminar', 'error'); return; }
     const roiId = _findRuleRoi(ruleId);
     if (roiId) {
       rulesCache[roiId] = rulesCache[roiId].filter(r => r.id !== ruleId);
     }
     renderRulesTab();
-  } catch (e) { alert('Error de red: ' + e.message); }
+  } catch (e) { showToast('Error de red: ' + e.message, 'error'); }
 }
 
 function showRuleForm(roiId) {
@@ -1126,7 +1154,7 @@ async function saveRuleForm(roiId, ruleId) {
   const severity = document.getElementById(prefix + '-severity');
   const eventType = document.getElementById(prefix + '-event');
   if (!name || !metric || !operator || !threshold || !severity || !eventType) return;
-  if (!name.value.trim()) { alert('Nombre requerido'); return; }
+  if (!name.value.trim()) { showToast('Nombre requerido', 'warning'); return; }
   const body = {
     name: name.value.trim(),
     class_id: classId ? (classId.value ? parseInt(classId.value) : null) : null,
@@ -1144,9 +1172,9 @@ async function saveRuleForm(roiId, ruleId) {
     } else {
       res = await fetchJSON('/api/rois/' + roiId + '/alert-rules', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     }
-    if (res.status >= 400) { alert('Error: ' + (res.data.error || 'Unknown')); return; }
+    if (res.status >= 400) { showToast('Error: ' + (res.data.error || 'Unknown'), 'error'); return; }
     renderRulesTab();
-  } catch (e) { alert('Network error: ' + e.message); }
+  } catch (e) { showToast('Network error: ' + e.message, 'error'); }
 }
 
 function cancelRuleForm(roiId, ruleId) {
@@ -1199,6 +1227,9 @@ function ruleFormHTML(roiId, rule) {
     const data = (res.status < 400) ? await res.json() : [];
     window._CLASS_NAMES = {};
     (data || []).forEach(c => { window._CLASS_NAMES[c.id] = c.name; });
+    _rebuildClassMapping();
+    // re-render if settings tab is open
+    if (state.drawerTab === 'settings') renderSettingsTab();
   } catch(e) {}
 })();
 
@@ -1370,9 +1401,35 @@ function renderClassChipsEditor(roiId, observed) {
 
 async function onObservedClassChange(roiId) {
   const classes = Array.from(document.querySelectorAll('.obs-cls-chk[data-roi="'+roiId+'"]:checked')).map(cb => cb.dataset.name);
+  // update chip visuals
+  document.querySelectorAll('.obs-cls-chk[data-roi="'+roiId+'"]').forEach(cb => {
+    const chip = cb.parentElement.querySelector('span');
+    if (chip) {
+      chip.className = cb.checked
+        ? 'inline-block px-2 py-0.5 rounded-full text-body-sm font-body-sm bg-primary text-on-primary'
+        : 'inline-block px-2 py-0.5 rounded-full text-body-sm font-body-sm bg-surface-container text-on-surface-variant';
+    }
+  });
+  // update count in header
+  const firstChk = document.querySelector('.obs-cls-chk[data-roi="'+roiId+'"]');
+  const detail = firstChk ? firstChk.closest('details') : null;
+  if (detail) {
+    const counter = detail.querySelector('.text-label-caps .text-body-sm');
+    if (counter) counter.textContent = `(${classes.length})`;
+    // update summary bar text
+    const summaryText = detail.querySelector('summary .text-on-surface-variant.truncate');
+    if (summaryText) {
+      summaryText.textContent = classes.length ? classes.slice(0,2).join(', ') + (classes.length > 2 ? ' +'+(classes.length-2) : '') : 'sin clases';
+    }
+  }
   try {
     await fetchJSON('/api/rois/' + roiId + '/observed-classes', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classes}) });
-  } catch (e) { alert('Error guardando clases: ' + e.message); }
+    // update local state so re-renders reflect the change
+    for (const src of state.sources) {
+      const roi = src.rois?.find(r => r.id === roiId);
+      if (roi) { roi.observed_classes = classes; break; }
+    }
+  } catch (e) { console.warn('Error guardando clases:', e); }
 }
 
 function showProfilesDialog(roiId) {
@@ -1408,7 +1465,7 @@ async function applyProfile(roiId, profileKey) {
     if (modal) modal.remove();
     await fetchSources(true);
     renderZonasTab();
-  } catch (e) { alert('Error aplicando perfil: ' + e.message); }
+  } catch (e) { showToast('Error aplicando perfil: ' + e.message, 'error'); }
 }
 
 function renderRuleCardCompact(roiId, r) {
@@ -1441,14 +1498,15 @@ function toggleFullVideo(sourceId) {
   else { input.disabled = false; input.value = input.value || '60'; updateSourceSetting(sourceId, 'max_seconds', parseInt(input.value)); }
 }
 
-// ANALYSIS FLOW
+// ANALYSIS FLOW — WIZARD 2 PASOS
 
 function openAnalysisModal() {
-  state.modalState = 'summary';
   state.modalSourceId = state.selectedSourceId;
   state.modalSessionId = null;
   state.modalError = null;
   state.pollingInterval = null;
+  state.modalState = 'wizard';
+  state.wizardStep = 1;
   renderModal();
 }
 
@@ -1464,40 +1522,173 @@ function renderModal() {
   modal.classList.remove('hidden');
   const src = state.modalSourceId ? getSource(state.modalSourceId) : null;
   const srcName = src ? src.name : '...';
-  if (state.modalState === 'summary') {
-    const settings = getSourceSettings(state.modalSourceId);
-    document.getElementById('modal-title').textContent = 'Run Analysis — ' + srcName;
-    body.innerHTML = `
-      <div class="space-y-3 mb-6">
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Source</span><span class="text-body-sm font-body-sm font-bold">${esc(srcName)}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Tracking</span><span class="text-body-sm font-body-sm font-bold">${(settings.tracking_classes||['person']).join(', ')}</span></div>
-        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Segundos a Analizar</span><span class="text-body-sm font-body-sm font-bold">${settings.max_seconds ? settings.max_seconds + 's' : 'Video Completo'}</span></div>
-        <div class="flex justify-between py-2"><span class="text-body-sm font-body-sm text-on-surface-variant">Areas</span><span class="text-body-sm font-body-sm font-bold">${src&&src.rois?src.rois.length:0} area${src&&src.rois&&src.rois.length!==1?'s':''}</span></div>
-      </div>
-      <div class="flex gap-3">
-        <button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Cancel</button>
-        <button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:bg-primary-container transition-all" onclick="startAnalysis()">Generate →</button>
-      </div>`;
-  } else if (state.modalState === 'progress') {
+
+  // Progress / result / error states unchanged
+  if (state.modalState === 'progress') {
     document.getElementById('modal-title').textContent = 'Processing';
     body.innerHTML = '<div class="text-center py-6"><div class="spinner mx-auto"></div><p class="text-body-md font-body-md text-on-surface-variant mt-4">Processing video analysis...</p><div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div><p id="progress-text" class="text-body-sm font-body-sm text-on-surface-variant">Starting...</p></div>';
-  } else if (state.modalState === 'result') {
+    return;
+  }
+  if (state.modalState === 'result') {
     document.getElementById('modal-title').textContent = 'Analysis Complete';
     var sid = state.modalSessionId;
     body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-green-600">✓</div><h3 class="text-headline-md font-headline-md font-bold mb-2">Complete!</h3><p class="text-body-sm font-body-sm text-on-surface-variant">Session ID: ' + esc(sid) + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:brightness-110 transition-all" onclick="closeModal(); viewAnalysis(\'' + sid + '\')">View Report</button></div>';
-  } else if (state.modalState === 'error') {
+    return;
+  }
+  if (state.modalState === 'error') {
     document.getElementById('modal-title').textContent = 'Analysis Failed';
-    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-error">✗</div><p class="text-body-md font-body-md text-error">' + esc(state.modalError || 'Unknown error') + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:bg-primary-container transition-all" onclick="retryAnalysis()">Retry</button></div>';
+    body.innerHTML = '<div class="text-center py-6"><div class="text-5xl mb-3 text-error">✗</div><p class="text-body-md font-body-md text-error">' + esc(state.modalError || 'Unknown error') + '</p></div><div class="flex gap-3"><button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold hover:bg-surface-container transition-all" onclick="closeModal()">Close</button><button class="flex-1 bg-primary text-on-primary py-3 font-bold hover:bg-primary-container transition-all" onclick="openWizardStep1()">Retry</button></div>';
+    return;
+  }
+
+  // ── WIZARD ──
+  const settings = getSourceSettings(state.modalSourceId);
+  const profileOptions = Object.keys(CLASS_PROFILES).map(k =>
+    '<option value="' + k + '" ' + (settings.profile === k ? 'selected' : '') + '>' + CLASS_PROFILES[k].name + '</option>'
+  ).join('');
+
+  const profile = settings.profile || 'custom';
+  const selectedClasses = settings.tracking_classes || CLASS_PROFILES[profile]?.classes || ['person'];
+
+  document.getElementById('modal-title').textContent = (state.wizardStep === 1 ? '⚙ Configure Analysis' : '📋 Review & Run') + ' — ' + srcName;
+
+  if (state.wizardStep === 1) {
+    body.innerHTML = `
+      <div class="space-y-5">
+        <div>
+          <label class="text-label-caps font-label-caps text-secondary uppercase mb-2 block">Class Profile</label>
+          <select id="wiz-profile" class="w-full border border-outline-variant rounded-lg px-3 py-2.5 text-body-md font-body-md bg-surface-container-lowest text-on-surface" onchange="onWizProfileChange()">
+            ${profileOptions}
+          </select>
+          <div id="wiz-classes" class="mt-3 flex flex-wrap gap-2"></div>
+        </div>
+        <div>
+          <label class="text-label-caps font-label-caps text-secondary uppercase mb-2 block">Metrics</label>
+          <div class="grid grid-cols-2 gap-2">
+            ${['entries','exits','occupancy','dwell_time'].map(m => {
+              const checked = m === 'dwell_time' ? '' : 'checked';
+              const labels = {entries:'Entradas/Salidas', exits:'Salidas', occupancy:'Ocupación', dwell_time:'Dwell Time'};
+              return '<label class="flex items-center gap-2 border border-outline-variant rounded-lg px-3 py-2 cursor-pointer hover:bg-surface-container transition-colors"><input type="checkbox" ' + checked + ' class="wiz-metric" data-metric="' + m + '"><span class="text-body-sm font-body-sm">' + labels[m] + '</span></label>';
+            }).join('')}
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-label-caps font-label-caps text-secondary uppercase mb-1 block">Max Seconds</label>
+            <input id="wiz-maxsec" type="number" min="0" step="10" class="w-full border border-outline-variant rounded-lg px-3 py-2 text-body-md" value="${settings.max_seconds || ''}" placeholder="0 = full video">
+            <p class="text-body-sm text-on-surface-variant mt-1">0 = video completo</p>
+          </div>
+          <div>
+            <label class="text-label-caps font-label-caps text-secondary uppercase mb-1 block">Frame Skip</label>
+            <select id="wiz-frameskip" class="w-full border border-outline-variant rounded-lg px-3 py-2.5 text-body-md bg-surface-container-lowest text-on-surface">
+              <option value="1" ${(settings.frame_skip||1)===1?'selected':''}>Every frame</option>
+              <option value="2" ${(settings.frame_skip||1)===2?'selected':''}>Every 2nd</option>
+              <option value="3" ${(settings.frame_skip||1)===3?'selected':''}>Every 3rd</option>
+              <option value="5" ${(settings.frame_skip||1)===5?'selected':''}>Every 5th (fast)</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <input type="checkbox" id="wiz-annotated" class="w-4 h-4" ${settings.annotated_video !== false ? 'checked' : ''}>
+          <label for="wiz-annotated" class="text-body-sm font-body-sm">Generate annotated video</label>
+        </div>
+        <div class="flex gap-3 pt-4 border-t border-outline-variant">
+          <button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold rounded-lg hover:bg-surface-container transition-all" onclick="closeModal()">Cancel</button>
+          <button class="flex-1 bg-primary text-on-primary py-3 font-bold rounded-lg hover:bg-primary-container transition-all" onclick="wizNextStep()">Next →</button>
+        </div>
+      </div>`;
+    setTimeout(renderWizClasses, 0);
+  } else {
+    // Step 2 — Review
+    const metricsOn = ['Entries/Exits', 'Occupancy', 'Dwell Time'].filter((_, i) => ['entries','occupancy','dwell_time'][i] ? true : (settings.metrics || {}).entries !== false).join(', ');
+    body.innerHTML = `
+      <div class="space-y-3 mb-6">
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Source</span><span class="text-body-sm font-body-sm font-bold">${esc(srcName)}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Tracking Classes</span><span class="text-body-sm font-body-sm font-bold text-right max-w-[60%]">${(settings.tracking_classes||['person']).join(', ')}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Max Seconds</span><span class="text-body-sm font-body-sm font-bold">${settings.max_seconds ? settings.max_seconds + 's' : 'Video Completo'}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Frame Skip</span><span class="text-body-sm font-body-sm font-bold">Every ${settings.frame_skip||1} frame${(settings.frame_skip||1)>1?'s':''}</span></div>
+        <div class="flex justify-between py-2 border-b border-outline-variant"><span class="text-body-sm font-body-sm text-on-surface-variant">Annotated Video</span><span class="text-body-sm font-body-sm font-bold">${settings.annotated_video !== false ? 'Yes' : 'No'}</span></div>
+        <div class="flex justify-between py-2"><span class="text-body-sm font-body-sm text-on-surface-variant">ROIs (Areas)</span><span class="text-body-sm font-body-sm font-bold">${src&&src.rois?src.rois.length:0}</span></div>
+      </div>
+      <div class="flex gap-3">
+        <button class="flex-1 border border-outline text-on-surface-variant py-3 font-bold rounded-lg hover:bg-surface-container transition-all" onclick="wizPrevStep()">← Back</button>
+        <button class="flex-1 bg-primary text-on-primary py-3 font-bold rounded-lg hover:bg-primary-container transition-all" onclick="startAnalysis()">Generate →</button>
+      </div>`;
   }
 }
 
-function retryAnalysis() { state.modalState = 'summary'; renderModal(); }
+function renderWizClasses() {
+  const container = document.getElementById('wiz-classes');
+  if (!container) return;
+  const profile = document.getElementById('wiz-profile')?.value || 'custom';
+  const settings = getSourceSettings(state.modalSourceId);
+  const selected = settings.tracking_classes || CLASS_PROFILES[profile]?.classes || ['person'];
+
+  let classes;
+  if (profile === 'all' || profile === 'custom') {
+    classes = window._CLASS_NAMES ? Object.values(window._CLASS_NAMES) : [];
+  } else {
+    classes = CLASS_PROFILES[profile]?.classes || [];
+  }
+
+  container.innerHTML = classes.map(c => {
+    const on = selected.includes(c);
+    return '<button class="px-3 py-1 rounded-full text-xs font-bold border transition-all ' + (on ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container text-on-surface-variant border-outline-variant hover:border-primary') + '" data-cls="' + esc(c) + '" onclick="toggleWizClass(this, \'' + esc(c) + '\')">' + esc(c) + '</button>';
+  }).join(' ');
+}
+
+function toggleWizClass(btn, cls) {
+  const settings = getSourceSettings(state.modalSourceId);
+  if (!settings.tracking_classes) settings.tracking_classes = [...(CLASS_PROFILES[settings.profile || 'custom']?.classes || ['person'])];
+  const idx = settings.tracking_classes.indexOf(cls);
+  if (idx >= 0) { settings.tracking_classes.splice(idx, 1); btn.classList.remove('bg-primary','text-on-primary','border-primary'); btn.classList.add('bg-surface-container','text-on-surface-variant','border-outline-variant'); }
+  else { settings.tracking_classes.push(cls); btn.classList.add('bg-primary','text-on-primary','border-primary'); btn.classList.remove('bg-surface-container','text-on-surface-variant','border-outline-variant'); }
+}
+
+function onWizProfileChange() {
+  const profile = document.getElementById('wiz-profile').value;
+  const settings = getSourceSettings(state.modalSourceId);
+  settings.profile = profile;
+  if (profile === 'all') {
+    settings.tracking_classes = window._CLASS_NAMES ? Object.values(window._CLASS_NAMES) : [];
+  } else if (profile === 'custom') {
+    // keep existing
+  } else {
+    settings.tracking_classes = [...(CLASS_PROFILES[profile]?.classes || [])];
+  }
+  renderWizClasses();
+}
+
+function wizNextStep() {
+  const settings = getSourceSettings(state.modalSourceId);
+  settings.max_seconds = parseInt(document.getElementById('wiz-maxsec').value) || null;
+  settings.frame_skip = parseInt(document.getElementById('wiz-frameskip').value) || 1;
+  settings.annotated_video = document.getElementById('wiz-annotated').checked;
+  const metrics = {};
+  document.querySelectorAll('.wiz-metric').forEach(cb => { metrics[cb.dataset.metric] = cb.checked; });
+  settings.metrics = metrics;
+  state.wizardStep = 2;
+  renderModal();
+}
+
+function wizPrevStep() { state.wizardStep = 1; renderModal(); }
+
+function retryAnalysis() { openWizardStep1(); }
+function openWizardStep1() { state.modalState = 'wizard'; state.wizardStep = 1; renderModal(); }
 
 function startAnalysis() {
   if (!state.modalSourceId) return;
   const settings = getSourceSettings(state.modalSourceId);
+  const metrics = settings.metrics || { entries: true, exits: true, occupancy: true, dwell_time: false, heatmap: false };
   state.modalState = 'progress'; renderModal();
-  fetchJSON('/process', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ video_source_id: state.modalSourceId, tracking_classes: settings.tracking_classes || ['person'], frame_skip: 1, max_seconds: settings.max_seconds, metrics: { entries: true, exits: true, occupancy: true, dwell_time: false, heatmap: false }, output: { report: true, annotated_video: true } }) })
+  fetchJSON('/process', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+    video_source_id: state.modalSourceId,
+    tracking_classes: settings.tracking_classes || ['person'],
+    frame_skip: settings.frame_skip || 1,
+    max_seconds: settings.max_seconds,
+    metrics: metrics,
+    output: { report: true, annotated_video: settings.annotated_video !== false }
+  }) })
   .then(({status, data}) => {
     if (status >= 400) { state.modalState = 'error'; state.modalError = data.error || 'Failed'; renderModal(); return; }
     state.pollingInterval = setInterval(pollJobStatus, 2000);
@@ -1513,33 +1704,71 @@ function pollJobStatus() {
     if (!status.running) {
       if (state.pollingInterval) { clearInterval(state.pollingInterval); state.pollingInterval = null; }
       if (status.error) { state.modalState = 'error'; state.modalError = status.error; renderModal(); }
-      else { state.modalState = 'result'; state.modalSessionId = status.session_id; renderModal(); if (state.tab === 'jobs') fetchSessions(); }
+      else {
+        state.modalState = 'result'; state.modalSessionId = status.session_id; renderModal();
+        showToast('Analysis complete!', 'success');
+        if (state.tab === 'jobs') fetchSessions();
+      }
     }
   }).catch(() => {});
 }
 
-// JOBS TAB
+// JOBS TABLE
 
 async function fetchSessions() {
-  const err = document.getElementById('jobs-error');
+  const container = document.getElementById('jobs-content');
+  if (!container) return;
+  const errDiv = document.getElementById('jobs-error');
+  if (errDiv) errDiv.classList.add('hidden');
+  container.innerHTML = '<div class="text-center py-12"><div class="spinner mx-auto mb-2"></div><p class="text-body-sm text-on-surface-variant">Loading...</p></div>';
   try {
     const res = await fetchJSON('/api/sessions');
-    if (res.status >= 400) { err.classList.remove('hidden'); document.getElementById('jobs-error-msg').textContent = res.data.error || 'Failed'; return; }
-    err.classList.add('hidden');
-    state.sessions = res.data;
+    if (res.status >= 400) {
+      if (errDiv) { errDiv.classList.remove('hidden'); document.getElementById('jobs-error-msg').textContent = res.data.error || 'Failed'; }
+      container.innerHTML = '';
+      return;
+    }
+    state.sessions = res.data || [];
     renderSessions();
-  } catch (e) { err.classList.remove('hidden'); document.getElementById('jobs-error-msg').textContent = e.message; }
+  } catch (e) {
+    if (errDiv) { errDiv.classList.remove('hidden'); document.getElementById('jobs-error-msg').textContent = e.message; }
+    container.innerHTML = '';
+  }
 }
 
 function renderSessions() {
   const content = document.getElementById('jobs-content');
-  if (state.sessions.length === 0) { content.innerHTML = '<div class="text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No jobs yet. Run an analysis from a source.</p></div>'; return; }
-  content.innerHTML = '<div class="overflow-x-auto"><table class="w-full text-left border-collapse"><thead><tr class="bg-surface-container-low"><th class="px-6 py-4 text-label-caps font-label-caps text-secondary uppercase border-b border-outline-variant">Source</th><th class="px-6 py-4 text-label-caps font-label-caps text-secondary uppercase border-b border-outline-variant">Status</th><th class="px-6 py-4 text-label-caps font-label-caps text-secondary uppercase border-b border-outline-variant">Date</th><th class="px-6 py-4 text-label-caps font-label-caps text-secondary uppercase border-b border-outline-variant">Duration</th><th class="px-6 py-4 text-label-caps font-label-caps text-secondary uppercase border-b border-outline-variant">Entities</th><th class="px-6 py-4 text-label-caps font-label-caps text-secondary uppercase border-b border-outline-variant text-right">Actions</th></tr></thead><tbody class="divide-y divide-outline-variant">' + state.sessions.map(s => {
-    const status = (s.status || 'completed').toLowerCase();
-    let badge = status === 'completed' ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#e8f5f3] text-[#13776d]"><span class="w-1.5 h-1.5 rounded-full bg-primary mr-2"></span>Completed</span>' : status === 'failed' ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-error-container text-error"><span class="w-1.5 h-1.5 rounded-full bg-error mr-2"></span>Failed</span>' : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"><span class="mini-spinner mr-2"></span>Running</span>';
-    let action = status === 'completed' ? '<a href="/api/sessions/' + esc(s.id) + '/report" target="_blank" class="bg-primary text-on-primary text-label-caps font-bold px-4 py-1.5 rounded-lg uppercase shadow-sm hover:brightness-110 active:scale-95 transition-all" style="text-decoration:none">Report</a>' : '<button class="border border-outline text-outline text-label-caps font-bold px-4 py-1.5 rounded-lg uppercase hover:bg-surface-container transition-all">Details</button>';
-    return '<tr class="hover:bg-surface-container transition-colors"><td class="px-6 py-4 text-body-md font-body-md text-on-surface">' + esc(s.source_name || '-') + '</td><td class="px-6 py-4">' + badge + '</td><td class="px-6 py-4 text-data-mono font-data-mono text-outline">' + formatDate(s.started_at) + '</td><td class="px-6 py-4 text-data-mono font-data-mono text-outline">' + formatDuration(s.duration_seconds) + '</td><td class="px-6 py-4 text-data-mono font-data-mono text-outline">' + (s.total_entities != null ? s.total_entities : '-') + '</td><td class="px-6 py-4 text-right">' + action + '</td></tr>';
+  if (!content) return;
+  if (state.sessions.length === 0) {
+    content.innerHTML = '<div class="text-center py-12"><p class="text-body-md font-body-md text-on-surface-variant">No jobs yet. Run an analysis from a source.</p></div>';
+    return;
+  }
+  content.innerHTML = '<div class="overflow-x-auto bg-surface-container-lowest border border-outline-variant rounded-xl"><table class="w-full text-left"><thead><tr class="border-b border-outline-variant text-label-caps text-secondary uppercase bg-surface-container-low"><th class="px-4 py-4 font-medium">Source</th><th class="px-4 py-4 font-medium">Classes</th><th class="px-4 py-4 font-medium">Tracks</th><th class="px-4 py-4 font-medium">Events</th><th class="px-4 py-4 font-medium">Status</th><th class="px-4 py-4 font-medium">Date</th><th class="px-4 py-4 font-medium">Duration</th><th class="px-4 py-4 font-medium text-right">Actions</th></tr></thead><tbody class="divide-y divide-outline-variant">' + state.sessions.map(s => {
+    const st = (s.status || 'completed').toLowerCase();
+    let badge = st === 'completed'
+      ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span>Completed</span>'
+      : st === 'failed'
+        ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error/10 text-error"><span class="w-1.5 h-1.5 bg-error rounded-full"></span>Failed</span>'
+        : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"><span class="mini-spinner mr-1"></span>Running</span>';
+    const clsStr = s.tracking_classes ? (Array.isArray(s.tracking_classes) ? s.tracking_classes.join(', ') : s.tracking_classes) : '-';
+    const actions = st === 'completed'
+      ? '<div class="flex gap-2 justify-end"><a href="/api/sessions/' + esc(s.id) + '/report" target="_blank" class="bg-primary text-on-primary text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:brightness-110 transition-all" style="text-decoration:none">Report</a><button class="border border-outline text-outline text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:bg-surface-container transition-all" onclick="reRunAnalysis(\'' + esc(s.id) + '\')">Re-run</button></div>'
+      : '<div class="flex gap-2 justify-end"><button class="border border-outline text-outline text-label-caps font-bold px-3 py-1.5 rounded-lg uppercase hover:bg-surface-container transition-all" onclick="viewAnalysis(\'' + esc(s.id) + '\')">Details</button></div>';
+    return '<tr class="hover:bg-surface-container/50 transition-colors"><td class="px-4 py-4 text-body-md font-body-md text-on-surface">' + esc(s.source_name || '-') + '</td><td class="px-4 py-4 text-body-sm text-on-surface-variant max-w-[120px] truncate">' + esc(clsStr) + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-on-surface-variant">' + (s.total_entities != null ? s.total_entities : '-') + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-on-surface-variant">' + (s.total_events != null ? s.total_events : '-') + '</td><td class="px-4 py-4">' + badge + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-outline">' + formatDate(s.started_at) + '</td><td class="px-4 py-4 text-data-mono font-data-mono text-outline">' + formatDuration(s.duration_seconds) + '</td><td class="px-4 py-4">' + actions + '</td></tr>';
   }).join('') + '</tbody></table></div>';
+}
+
+function reRunAnalysis(sessionId) {
+  showToast('Re-running analysis...', 'info');
+  const session = state.sessions.find(s => s.id === sessionId);
+  if (session) {
+    state.modalSourceId = session.source_id;
+    state.modalState = 'wizard';
+    state.wizardStep = 1;
+    renderModal();
+  } else {
+    showToast('Session not found', 'error');
+  }
 }
 
 // ANALYTICS CHARTS
@@ -1604,7 +1833,7 @@ async function fetchDwellTimes() {
   }
 }
 
-function exportReport() { alert('Export feature coming soon'); }
+function exportReport() { showToast('Export feature coming soon', 'info'); }
 
 // LOGS SIMULATION
 async function fetchLogs() {
@@ -2112,15 +2341,15 @@ async function viewAnalysis(id) {
     document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.add('hidden'); });
     var detailTab = document.getElementById('tab-analysis-detail');
     if (detailTab) detailTab.classList.remove('hidden');
-    state.tab = 'historial';
+    state.tab = 'jobs';
     document.querySelectorAll('.nav-link').forEach(function(a) {
-      var isHistorial = a.dataset.tab === 'historial';
-      a.classList.toggle('text-primary', isHistorial);
-      a.classList.toggle('font-bold', isHistorial);
-      a.classList.toggle('border-r-4', isHistorial);
-      a.classList.toggle('border-primary', isHistorial);
-      a.classList.toggle('bg-surface-container-high', isHistorial);
-      a.classList.toggle('text-on-surface-variant', !isHistorial);
+      var isJobs = a.dataset.tab === 'jobs';
+      a.classList.toggle('text-primary', isJobs);
+      a.classList.toggle('font-bold', isJobs);
+      a.classList.toggle('border-r-4', isJobs);
+      a.classList.toggle('border-primary', isJobs);
+      a.classList.toggle('bg-surface-container-high', isJobs);
+      a.classList.toggle('text-on-surface-variant', !isJobs);
     });
   } catch (e) {
     console.error('viewAnalysis error', e);

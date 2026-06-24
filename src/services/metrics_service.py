@@ -3,6 +3,7 @@ import uuid
 from typing import Optional
 from src.repositories.metric_snapshot_repo import MetricSnapshotRepository
 from src.repositories.zone_event_repo import ZoneEventRepository
+from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
 from src.repositories.db import execute_query
 
 
@@ -20,6 +21,7 @@ class MetricsService:
     def __init__(self):
         self.snapshot_repo = MetricSnapshotRepository()
         self.zone_event_repo = ZoneEventRepository()
+        self.occupancy_repo = OccupancySnapshotRepository()
 
     def compute(self, session_id: uuid.UUID) -> list:
         """Compute MetricSnapshot for every (ROI, object_class) pair in a session.
@@ -51,7 +53,6 @@ class MetricsService:
             if ze["event_type"] == "entry":
                 m["entries"] += 1
                 m["occupancy"] += 1
-                m["peak_occupancy"] = max(m["peak_occupancy"], m["occupancy"])
                 if track_id is not None:
                     m["unique_tracks"].add(track_id)
             elif ze["event_type"] == "exit":
@@ -61,6 +62,11 @@ class MetricsService:
                     m["dwell_values"].append(float(ze["dwell_seconds"]))
                 if track_id is not None:
                     m["unique_tracks"].add(track_id)
+
+        # peak_occupancy real desde roi_occupancy_snapshot (no delta)
+        for (roi_id, cls) in list(agg.keys()):
+            peak = self.occupancy_repo.get_peak_occupancy(str(session_id), str(roi_id))
+            agg[(roi_id, cls)]["peak_occupancy"] = peak
 
         # Persist one row per (roi, class)
         results = []
@@ -336,7 +342,6 @@ class MetricsService:
             SELECT ds.id::text, ds.started_at, ds.ended_at,
                    COALESCE(SUM(ms.entries), 0)  AS entries,
                    COALESCE(SUM(ms.exits), 0)    AS exits,
-                   COALESCE(MAX(ms.max_occupancy), 0) AS peak_occupancy,
                    COALESCE(AVG(ms.avg_dwell_seconds), 0) AS avg_dwell_seconds,
                    COALESCE(SUM(ms.unique_objects), 0) AS unique_tracks
             FROM roi r
@@ -352,16 +357,19 @@ class MetricsService:
         )
         if not row:
             return {"has_data": False, "session_id": None}
+        session_id = row[0]
+        # peak_occupancy real desde snapshots de occupancy (no delta de events)
+        peak_occupancy = self.occupancy_repo.get_peak_occupancy(session_id, roi_id)
         return {
             "has_data": True,
-            "session_id": row[0],
+            "session_id": session_id,
             "started_at": row[1].isoformat() if row[1] else None,
             "duration_seconds": (row[2] - row[1]).total_seconds() if (row[1] and row[2]) else None,
             "entries": int(row[3]),
             "exits": int(row[4]),
-            "peak_occupancy": int(row[5]),
-            "avg_dwell_seconds": round(float(row[6]), 1) if row[6] else 0,
-            "unique_tracks": int(row[7]),
+            "peak_occupancy": peak_occupancy,
+            "avg_dwell_seconds": round(float(row[5]), 1) if row[5] else 0,
+            "unique_tracks": int(row[6]),
         }
 
     def get_trend(self, roi_id: uuid.UUID) -> list:

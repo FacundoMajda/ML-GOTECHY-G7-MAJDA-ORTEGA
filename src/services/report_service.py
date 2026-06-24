@@ -8,6 +8,47 @@ from src.repositories.roi_repo import ROIRepository
 from src.repositories.db import execute_query
 
 
+def _build_snapshots_from_occupancy(session_id: str, roi_repo: ROIRepository) -> list[dict]:
+    """Build fake metric_snapshot rows from roi_occupancy_snapshot when no zone events exist."""
+    rows = execute_query(
+        """
+        SELECT ros.roi_id, ros.count_inside,
+               r.observed_classes
+        FROM roi_occupancy_snapshot ros
+        JOIN roi r ON r.id = ros.roi_id
+        WHERE ros.session_id = %s
+        """,
+        (session_id,),
+        fetch="all",
+    )
+    if not rows:
+        return []
+    # agg per roi
+    roi_max: dict[str, int] = {}
+    roi_classes: dict[str, list[str]] = {}
+    for row in rows:
+        rid = row[0]
+        count = row[1] or 0
+        obs = row[2] or ["person"]
+        if rid not in roi_max or count > roi_max[rid]:
+            roi_max[rid] = count
+        if rid not in roi_classes:
+            roi_classes[rid] = obs
+    result = []
+    for rid, peak in roi_max.items():
+        for cls in roi_classes.get(rid, ["person"]):
+            result.append({
+                "roi_id": rid,
+                "object_class": cls,
+                "entries": 0,
+                "exits": 0,
+                "max_occupancy": peak,
+                "avg_dwell_seconds": None,
+                "unique_objects": 0,
+            })
+    return result
+
+
 def generate_report_html(session_id: str) -> str:
     """Genera HTML limpio para un analisis. Lee de metric_snapshot."""
     session_repo = SessionRepository()
@@ -19,6 +60,10 @@ def generate_report_html(session_id: str) -> str:
         return "<html><body><h1>Analisis no encontrado</h1></body></html>"
 
     snapshots = snapshot_repo.get_by_session(session_id)
+
+    # Fallback: si metric_snapshot esta vacio, leer de roi_occupancy_snapshot
+    if not snapshots:
+        snapshots = _build_snapshots_from_occupancy(session_id, roi_repo)
 
     # Cache de nombres de ROI
     roi_names: dict[str, str] = {}

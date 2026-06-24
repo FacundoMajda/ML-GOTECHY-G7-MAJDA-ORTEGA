@@ -43,6 +43,7 @@ dependencies = [
     "ultralytics-thop==2.0.20",
     "urllib3==2.7.0",
     "yt-dlp==2026.6.9",
+    "imageio-ffmpeg>=0.6.0,<1",
 ]
 
 # Nota: la config de `python-downloads = "never"` se pasa por env var en el Dockerfile

@@ -57,12 +57,25 @@ _job_lock: threading.Lock = threading.Lock()
 _frame_dim_cache: dict[str, tuple[int, int]] = {}
 _frame_dim_lock: threading.Lock = threading.Lock()
 
-# ── Tracking class name → YOLO class ID mapping ────────────────────────────
+# ── Tracking class name → YOLO class ID mapping (full COCO 80) ────────────
 _TRACKING_CLASS_TO_YOLO = {
-    "person": 0,
-    "bicycle": 1,
-    "car": 2,
-    "backpack": 24,
+    "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3, "airplane": 4,
+    "bus": 5, "train": 6, "truck": 7, "boat": 8, "traffic light": 9,
+    "fire hydrant": 10, "stop sign": 11, "parking meter": 12, "bench": 13,
+    "bird": 14, "cat": 15, "dog": 16, "horse": 17, "sheep": 18,
+    "cow": 19, "elephant": 20, "bear": 21, "zebra": 22, "giraffe": 23,
+    "backpack": 24, "umbrella": 25, "handbag": 26, "tie": 27, "suitcase": 28,
+    "frisbee": 29, "skis": 30, "snowboard": 31, "sports ball": 32, "kite": 33,
+    "baseball bat": 34, "baseball glove": 35, "skateboard": 36, "surfboard": 37,
+    "tennis racket": 38, "bottle": 39, "wine glass": 40, "cup": 41, "fork": 42,
+    "knife": 43, "spoon": 44, "bowl": 45, "banana": 46, "apple": 47,
+    "sandwich": 48, "orange": 49, "broccoli": 50, "carrot": 51, "hot dog": 52,
+    "pizza": 53, "donut": 54, "cake": 55, "chair": 56, "couch": 57,
+    "potted plant": 58, "bed": 59, "dining table": 60, "toilet": 61,
+    "tv": 62, "laptop": 63, "mouse": 64, "remote": 65, "keyboard": 66,
+    "cell phone": 67, "microwave": 68, "oven": 69, "toaster": 70, "sink": 71,
+    "refrigerator": 72, "book": 73, "clock": 74, "vase": 75, "scissors": 76,
+    "teddy bear": 77, "hair drier": 78, "toothbrush": 79,
 }
 
 
@@ -113,8 +126,15 @@ def _run_analysis(
 
         # Feedback post-procesamiento — UI ya no se queda congelada
         with _job_lock:
-            _job_progress["message"] = "Saving results to database..."
+            _job_progress["message"] = "Computing derived metrics..."
             _job_progress["timestamp"] = datetime.now().isoformat()
+
+        # Compute derived metrics (peak_occupancy, dwell, etc.)
+        print(f"[DEBUG] _run_analysis: calling MetricsService().compute(str(result.id))", flush=True)
+        try:
+            MetricsService().compute(str(result.id))
+        except Exception as e:
+            print(f"[WARN] _run_analysis: MetricsService().compute() failed: {e}", flush=True)
 
         # Save report HTML to disk
         print(f"[DEBUG] _run_analysis: calling generate_report_html(str(result.id))", flush=True)
@@ -128,6 +148,7 @@ def _run_analysis(
             _job_progress["running"] = False
             _job_progress["session_id"] = result.id
             _job_progress["error"] = None
+            _job_progress["progress"] = 1.0
             _job_progress["timestamp"] = datetime.now().isoformat()
             _job_progress["message"] = "Analysis complete"
             print(f"[DEBUG] _run_analysis: _job_progress set -> {dict(_job_progress)}", flush=True)
@@ -1329,7 +1350,10 @@ class AppHandler(BaseHTTPRequestHandler):
 
                 with file_path.open("rb") as fh:
                     fh.seek(start)
-                    self.wfile.write(fh.read(length))
+                    try:
+                        self.wfile.write(fh.read(length))
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
                 return
             except Exception as exc:
                 print(f"[DEBUG] AppHandler._send_file: invalid range header -> {exc}", flush=True)
@@ -1340,5 +1364,8 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(file_size))
         self.end_headers()
         with file_path.open("rb") as fh:
-            shutil.copyfileobj(fh, self.wfile)
+            try:
+                shutil.copyfileobj(fh, self.wfile)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 

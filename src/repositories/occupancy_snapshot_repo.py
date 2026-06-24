@@ -49,3 +49,29 @@ class OccupancySnapshotRepository:
             }
             for row in rows
         ]
+
+    def get_peak_occupancy(self, session_id: str, roi_id: str) -> int:
+        """Max count_inside para un session+roi (dato real, no delta)."""
+        row = execute_query(
+            """
+            SELECT MAX(count_inside)
+            FROM roi_occupancy_snapshot
+            WHERE session_id = %s AND roi_id = %s
+            """,
+            (session_id, roi_id),
+            fetch="one",
+        )
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def get_avg_occupancy(self, session_id: str, roi_id: str) -> float:
+        """Avg count_inside para un session+roi."""
+        row = execute_query(
+            """
+            SELECT AVG(count_inside)
+            FROM roi_occupancy_snapshot
+            WHERE session_id = %s AND roi_id = %s
+            """,
+            (session_id, roi_id),
+            fetch="one",
+        )
+        return float(row[0]) if row and row[0] is not None else 0.0
