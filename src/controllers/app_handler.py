@@ -173,6 +173,9 @@ def _get_frame_dimensions(source_id: str) -> tuple[int, int]:
             print(f"[DEBUG] _get_frame_dimensions: frame read failed, returning (0,0)", flush=True)
             return (0, 0)
         h, w = frame.shape[:2]
+        # Validar alineación 16px (estándar codificación video)
+        if w % 16 != 0 or h % 16 != 0:
+            print(f"[WARN] _get_frame_dimensions: source_id={source_id} resolution {w}x{h} not 16px aligned (w%16={w%16}, h%16={h%16})", flush=True)
         with _frame_dim_lock:
             _frame_dim_cache[source_id] = (w, h)
         print(f"[DEBUG] _get_frame_dimensions: returning ({w}, {h})", flush=True)

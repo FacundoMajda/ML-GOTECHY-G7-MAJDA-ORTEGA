@@ -1043,9 +1043,20 @@ function renderRuleCard(roiId, r) {
 
 // ── RULE CRUD ──
 
+function _findRuleRoi(ruleId) {
+  for (const roiId in rulesCache) {
+    if (rulesCache[roiId].some(r => r.id === ruleId)) return roiId;
+  }
+  return null;
+}
+
 async function toggleRule(ruleId, active) {
+  const roiId = _findRuleRoi(ruleId);
+  if (!roiId) { renderRulesTab(); return; }
   try {
     await fetchJSON('/api/alert-rules/' + ruleId + '/toggle', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({active}) });
+    const rule = rulesCache[roiId].find(r => r.id === ruleId);
+    if (rule) rule.active = active;
     renderRulesTab();
   } catch (e) { alert('Error: ' + e.message); }
 }
@@ -1055,6 +1066,10 @@ async function deleteRule(ruleId, name) {
   try {
     const res = await fetch('/api/alert-rules/' + ruleId, { method: 'DELETE' });
     if (res.status >= 400) { alert('Error al eliminar'); return; }
+    const roiId = _findRuleRoi(ruleId);
+    if (roiId) {
+      rulesCache[roiId] = rulesCache[roiId].filter(r => r.id !== ruleId);
+    }
     renderRulesTab();
   } catch (e) { alert('Error de red: ' + e.message); }
 }
