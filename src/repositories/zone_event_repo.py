@@ -57,7 +57,7 @@ class ZoneEventRepository:
         rows = execute_query(
             """
             SELECT id, session_id, roi_id, track_id, event_type,
-                   occurred_at, frame_number, dwell_seconds, metadata
+                   object_class, occurred_at, frame_number, dwell_seconds, metadata
             FROM zone_event
             WHERE session_id = %s
             ORDER BY occurred_at
@@ -69,8 +69,9 @@ class ZoneEventRepository:
             {
                 "id": r[0], "session_id": r[1], "roi_id": r[2],
                 "track_id": r[3], "event_type": r[4],
-                "occurred_at": r[5], "frame_number": r[6],
-                "dwell_seconds": r[7], "metadata": json.loads(r[8]) if r[8] else {},
+                "object_class": r[5] or "person",
+                "occurred_at": r[6], "frame_number": r[7],
+                "dwell_seconds": r[8], "metadata": json.loads(r[9]) if r[9] else {},
             }
             for r in rows
         ]

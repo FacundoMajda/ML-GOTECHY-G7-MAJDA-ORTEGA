@@ -652,6 +652,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 for row in events
             ]
 
+            # ── Per-class totals from zone_events (accurate even if metric_snapshot has stale data) ──
+            class_summary: dict[str, dict] = {}
+            for ev in zone_events:
+                cls = ev["object_class"]
+                if cls not in class_summary:
+                    class_summary[cls] = {"entries": 0, "exits": 0}
+                if ev["event_type"] == "entry":
+                    class_summary[cls]["entries"] += 1
+                elif ev["event_type"] == "exit":
+                    class_summary[cls]["exits"] += 1
+
             self._send_json(200, {
                 'id': session['id'],
                 'source_name': session.get('source_name'),
@@ -666,6 +677,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 'total_entries': total_entries,
                 'total_exits': total_exits,
                 'total_max_occupancy': total_max_occ,
+                'class_summary': class_summary,
                 'metrics': cleaned_snaps,
                 'zone_events': zone_events,
             })

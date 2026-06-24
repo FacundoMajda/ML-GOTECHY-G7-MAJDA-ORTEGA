@@ -2314,18 +2314,8 @@ async function viewAnalysis(id) {
     var totalExits = data.total_exits || 0;
     var totalEvents = data.total_events || 0;
 
-    // ── Aggregate per class ──
-    var classAgg = {};
-    if (Array.isArray(data.metrics)) {
-      for (var mi = 0; mi < data.metrics.length; mi++) {
-        var m = data.metrics[mi];
-        var cls = m.object_class || 'person';
-        if (!classAgg[cls]) classAgg[cls] = { entries: 0, exits: 0, maxOcc: 0 };
-        classAgg[cls].entries += m.entries || 0;
-        classAgg[cls].exits += m.exits || 0;
-        if ((m.max_occupancy || 0) > classAgg[cls].maxOcc) classAgg[cls].maxOcc = m.max_occupancy || 0;
-      }
-    }
+    // ── Per-class breakdown from class_summary (directly from zone_events, always accurate) ──
+    var classAgg = data.class_summary || {};
     function classBadges(agg, field) {
       var keys = Object.keys(agg);
       if (keys.length === 0) return '';
