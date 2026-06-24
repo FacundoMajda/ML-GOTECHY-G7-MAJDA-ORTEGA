@@ -262,6 +262,7 @@ ROUTES_GET = {
     "/api/classes": "_api_classes",
     "/api/classes/grouped": "_api_classes_grouped",
     re.compile(r"^/api/rois/([^/]+)/alert-rules$"): "_api_list_alert_rules",
+    re.compile(r"^/api/rois/([^/]+)/metrics/summary$"): "_api_roi_metrics_summary",
 }
 
 ROUTES_POST = {
@@ -994,6 +995,19 @@ class AppHandler(BaseHTTPRequestHandler):
             classes = ["person"]
         _roi_repo.update_observed_classes(roi_id, classes)
         self._send_json(200, {"id": roi_id, "observed_classes": classes})
+
+    def _api_roi_metrics_summary(self, roi_id: str) -> None:
+        """GET /api/rois/<id>/metrics/summary — mini-stats del ultimo session."""
+        try:
+            existing = _roi_repo.get_by_id(roi_id)
+            if existing is None:
+                self._send_json(404, {"error": "ROI not found"})
+                return
+            data = MetricsService().get_roi_summary(roi_id)
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
 
     # ── Logs / Problems + Resources ───────────────────────────────────────
 

@@ -501,7 +501,7 @@ body { background-color: #fbf9f4; font-family: 'Inter', sans-serif; color: #1b1c
 <div class="flex border-b border-outline-variant flex-shrink-0">
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab active" data-dtab="preview" onclick="switchDrawerTab('preview')">Preview</button>
 <button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="zonas" onclick="switchDrawerTab('zonas')">Zonas</button>
-<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="settings" onclick="switchDrawerTab('settings')">Settings</button>
+<button class="flex-1 px-4 py-3 text-label-caps font-label-caps text-center cursor-pointer drawer-tab text-on-surface-variant hover:text-primary" data-dtab="settings" onclick="switchDrawerTab('settings')">Analisis</button>
 </div>
 <div class="flex-1 overflow-y-auto p-6">
 <div id="dt-preview" class="dt-content">
@@ -566,6 +566,25 @@ const roiColors = [
   { fill: 'rgba(139,92,246,0.15)', stroke: '#8b5cf6' },
   { fill: 'rgba(236,72,153,0.15)', stroke: '#ec4899' },
 ];
+
+// ── CLASS PROFILES (KISS: hardcoded, editable later) ──
+const CLASS_PROFILES = {
+  custom:     { name: 'Custom',     classes: [] },
+  retail:     { name: 'Retail',     classes: ['person','backpack','handbag','suitcase'] },
+  traffic:    { name: 'Traffic',    classes: ['person','bicycle','motorcycle','car','bus','truck'] },
+  security:   { name: 'Security',   classes: ['person','backpack','suitcase'] },
+  industrial: { name: 'Industrial', classes: ['person','truck'] },
+  all:        { name: 'Todas (80)', classes: [] }, // will be filled dynamically
+};
+
+function getProfileClasses(profileKey) {
+  const profile = CLASS_PROFILES[profileKey];
+  if (!profile) return [];
+  if (profileKey === 'all') {
+    return window._CLASS_NAMES ? Object.values(window._CLASS_NAMES) : [];
+  }
+  return profile.classes.filter(c => window._CLASS_NAMES && Object.values(window._CLASS_NAMES).includes(c));
+}
 
 function esc(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -1202,6 +1221,12 @@ function renderSettingsTab() {
   const selected = settings.tracking_classes || [];
   document.getElementById('settings-content').innerHTML = `
     <div class="mb-6">
+      <h3 class="text-label-caps font-label-caps text-on-surface-variant mb-2">PERFIL DE ANALISIS</h3>
+      <select id="settings-profile" class="w-full border border-outline-variant rounded-lg p-2 text-body-md font-body-md bg-background text-on-background" onchange="onProfileChange(this.value)">
+        ${Object.entries(CLASS_PROFILES).map(([k, p]) => `<option value="${k}">${p.name} (${p.classes.length || '80'} clases)</option>`).join('')}
+      </select>
+    </div>
+    <div class="mb-6">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-label-caps font-label-caps text-on-surface-variant">TRACKING CLASSES <span class="text-body-sm font-body-sm">(${selected.length}/${classes.length})</span></h3>
         <div class="flex gap-1">
@@ -1241,6 +1266,18 @@ function onClearAllClasses() {
   settings.tracking_classes = [];
 }
 
+function onProfileChange(profileKey) {
+  const classes = getProfileClasses(profileKey);
+  document.querySelectorAll('.settings-chk').forEach(cb => { cb.checked = classes.includes(cb.dataset.class); });
+  const settings = getSourceSettings(state.selectedSourceId);
+  settings.tracking_classes = classes;
+  const counter = document.querySelector('#settings-content h3 .text-body-sm');
+  if (counter) {
+    const total = window._CLASS_NAMES ? Object.keys(window._CLASS_NAMES).length : 0;
+    counter.textContent = `(${classes.length}/${total})`;
+  }
+}
+
 function filterSettingsClasses() {
   const q = document.getElementById('settings-class-search').value.toLowerCase();
   document.querySelectorAll('.settings-cls-row').forEach(row => {
@@ -1254,8 +1291,30 @@ function onTrackingClassChange(sourceId) {
 }
 
 // ZONAS TAB — Unified ROI card (detection + observed classes + rules)
+let roiSummariesCache = {};
+
+async function fetchRoiSummary(roiId) {
+  try {
+    const res = await fetchJSON('/api/rois/' + roiId + '/metrics/summary');
+    return res.status === 200 ? res.data : null;
+  } catch (e) { return null; }
+}
+
+async function fetchAllRoiSummaries() {
+  const src = getSource(state.selectedSourceId);
+  if (!src || !src.rois) return;
+  roiSummariesCache = {};
+  const results = await Promise.all(src.rois.map(r => fetchRoiSummary(r.id)));
+  src.rois.forEach((r, i) => { roiSummariesCache[r.id] = results[i]; });
+}
+
+function formatRoiStatsInline(s) {
+  if (!s || !s.has_data) return '';
+  return `<span class="text-label-caps font-label-caps text-on-surface-variant ml-auto">↓${s.entries} ↑${s.exits} · peak ${s.peak_occupancy} · ${s.unique_tracks}t</span>`;
+}
+
 async function renderZonasTab() {
-  await fetchAllRules();
+  await Promise.all([fetchAllRules(), fetchAllRoiSummaries()]);
   const src = getSource(state.selectedSourceId);
   const container = document.getElementById('zonas-list');
   if (!src || !src.rois || src.rois.length === 0) {
@@ -1265,13 +1324,15 @@ async function renderZonasTab() {
   container.innerHTML = src.rois.map((roi, idx) => {
     const eid = esc(roi.id);
     const rules = rulesCache[roi.id] || [];
+    const summary = roiSummariesCache[roi.id];
     const roiColor = roiColors[idx % roiColors.length];
     const observed = roi.observed_classes || [];
     return `<details class="border-l-4 border border-outline-variant rounded-lg mb-3 overflow-hidden bg-surface-container-low" style="border-left-color:${roiColor.stroke}">
       <summary class="flex items-center justify-between px-4 py-3 cursor-pointer font-bold text-body-md font-body-md hover:bg-surface-container transition-colors">
         <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:${roiColor.stroke}"></span>${esc(roi.name)}</span>
-        <span class="text-body-sm font-body-sm text-on-surface-variant">${rules.length} reglas</span>
-        <button onclick="event.stopPropagation(); deleteROI('${eid}', '${esc(roi.name)}')" class="p-1 rounded-full hover:bg-error-container text-on-surface-variant hover:text-error transition-all" title="Eliminar area">
+        <span class="text-body-sm font-body-sm text-on-surface-variant truncate flex-1 mx-3">${observed.length ? esc(observed.slice(0,2).join(', ')) + (observed.length > 2 ? ` +${observed.length-2}` : '') : '<i>sin clases</i>'}</span>
+        ${formatRoiStatsInline(summary)}
+        <button onclick="event.stopPropagation(); deleteROI('${eid}', '${esc(roi.name)}')" class="p-1 rounded-full hover:bg-error-container text-on-surface-variant hover:text-error transition-all ml-2" title="Eliminar area">
           <span class="material-symbols-outlined" style="font-size:16px">delete</span>
         </button>
       </summary>
@@ -1287,7 +1348,10 @@ async function renderZonasTab() {
           <span id="config-msg-${eid}" class="text-body-sm font-body-sm text-primary"></span>
         </div>
         <div>
-          <h4 class="text-label-caps font-label-caps text-on-surface-variant mb-2">CLASES OBSERVADAS <span class="text-body-sm font-body-sm">(${observed.length})</span></h4>
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-label-caps font-label-caps text-on-surface-variant">CLASES MONITOREADAS <span class="text-body-sm font-body-sm">(${observed.length})</span></h4>
+            <button onclick="showProfilesDialog('${eid}')" class="text-label-caps font-label-caps text-primary hover:underline">+ Perfil</button>
+          </div>
           <div class="max-h-40 overflow-y-auto border border-outline-variant rounded p-2 bg-surface-container-lowest">
             ${renderClassChipsEditor(eid, observed)}
           </div>
@@ -1318,6 +1382,42 @@ async function onObservedClassChange(roiId) {
   try {
     await fetchJSON('/api/rois/' + roiId + '/observed-classes', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classes}) });
   } catch (e) { alert('Error guardando clases: ' + e.message); }
+}
+
+function showProfilesDialog(roiId) {
+  const existing = document.getElementById('profiles-modal');
+  if (existing) existing.remove();
+  const profiles = Object.entries(CLASS_PROFILES);
+  const html = `<div id="profiles-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onclick="if(event.target.id==='profiles-modal') this.remove()">
+    <div class="bg-surface-container-lowest rounded-2xl p-5 w-full max-w-md shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-headline-md font-headline-md font-bold text-on-surface">Aplicar Perfil</h3>
+        <button onclick="document.getElementById('profiles-modal').remove()" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface p-1">close</button>
+      </div>
+      <p class="text-body-sm font-body-sm text-on-surface-variant mb-3">Reemplaza las clases monitoreadas del ROI con las del perfil seleccionado.</p>
+      <div class="space-y-1">
+        ${profiles.map(([key, p]) => `<button onclick="applyProfile('${roiId}','${key}')" class="w-full text-left border border-outline-variant rounded-lg p-3 hover:bg-surface-container transition-all">
+          <div class="flex items-center justify-between">
+            <span class="text-body-md font-body-md font-bold text-on-surface">${p.name}</span>
+            <span class="text-body-sm font-body-sm text-on-surface-variant">${p.classes.length || '80'} clases</span>
+          </div>
+          <div class="text-body-sm font-body-sm text-on-surface-variant truncate">${p.classes.length ? p.classes.join(', ') : 'segun seleccion manual'}</div>
+        </button>`).join('')}
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function applyProfile(roiId, profileKey) {
+  const classes = getProfileClasses(profileKey);
+  try {
+    await fetchJSON('/api/rois/' + roiId + '/observed-classes', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classes}) });
+    const modal = document.getElementById('profiles-modal');
+    if (modal) modal.remove();
+    await fetchSources(true);
+    renderZonasTab();
+  } catch (e) { alert('Error aplicando perfil: ' + e.message); }
 }
 
 function renderRuleCardCompact(roiId, r) {

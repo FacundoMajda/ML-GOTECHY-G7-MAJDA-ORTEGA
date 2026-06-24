@@ -329,6 +329,41 @@ class MetricsService:
             "alerts_timeline": alerts_timeline,
         }
 
+    def get_roi_summary(self, roi_id: str) -> dict:
+        """Mini-stats del ultimo session de un ROI: entries, exits, peak, dwell, tracks."""
+        row = execute_query(
+            """
+            SELECT ds.id::text, ds.started_at, ds.ended_at,
+                   COALESCE(SUM(ms.entries), 0)  AS entries,
+                   COALESCE(SUM(ms.exits), 0)    AS exits,
+                   COALESCE(MAX(ms.max_occupancy), 0) AS peak_occupancy,
+                   COALESCE(AVG(ms.avg_dwell_seconds), 0) AS avg_dwell_seconds,
+                   COALESCE(SUM(ms.unique_objects), 0) AS unique_tracks
+            FROM roi r
+            LEFT JOIN detection_session ds ON ds.video_source_id = r.video_source_id AND ds.status = 'completed'
+            LEFT JOIN metric_snapshot ms ON ms.session_id = ds.id AND ms.roi_id = r.id
+            WHERE r.id = %s
+            GROUP BY ds.id, ds.started_at, ds.ended_at
+            ORDER BY ds.started_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            (roi_id,),
+            fetch="one",
+        )
+        if not row:
+            return {"has_data": False, "session_id": None}
+        return {
+            "has_data": True,
+            "session_id": row[0],
+            "started_at": row[1].isoformat() if row[1] else None,
+            "duration_seconds": (row[2] - row[1]).total_seconds() if (row[1] and row[2]) else None,
+            "entries": int(row[3]),
+            "exits": int(row[4]),
+            "peak_occupancy": int(row[5]),
+            "avg_dwell_seconds": round(float(row[6]), 1) if row[6] else 0,
+            "unique_tracks": int(row[7]),
+        }
+
     def get_trend(self, roi_id: uuid.UUID) -> list:
         """Time series of entries/exits per session for a ROI."""
         rows = execute_query(
