@@ -4,13 +4,7 @@ import uuid
 from datetime import datetime
 from uuid import UUID
 
-from src.models.contracts import (
-    OccupancySnapshot,
-    SessionResult,
-    TrackedEntityRecord,
-    ZoneEventRecord,
-)
-from src.models.enums import TimestampMode
+from src.models.contracts import SessionResult
 from src.repositories.db import execute_query
 
 
@@ -41,88 +35,6 @@ class SessionRepository:
         )
         print(f"[DEBUG] SessionRepository.create_session: returning uuid={session_uuid}", flush=True)
         return session_uuid
-
-    def save_tracked_entities(
-        self, session_id: UUID, entities: list[TrackedEntityRecord]
-    ) -> None:
-        print(f"[DEBUG] SessionRepository.save_tracked_entities: ENTRY session_id={session_id} n_entities={len(entities)}", flush=True)
-        for e in entities:
-            execute_query(
-                """
-                INSERT INTO tracked_entity
-                (id, session_id, track_id, first_seen_at, last_seen_at, first_seen_frame, last_seen_frame)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (session_id, track_id) DO UPDATE
-                SET last_seen_at = EXCLUDED.last_seen_at,
-                    last_seen_frame = EXCLUDED.last_seen_frame
-                """,
-                (
-                    str(uuid.uuid4()),
-                    str(session_id),
-                    e.track_id,
-                    e.first_seen_at,
-                    e.last_seen_at,
-                    e.first_seen_frame,
-                    e.last_seen_frame,
-                ),
-                fetch=None,
-            )
-
-    def save_occupancy_snapshot(
-        self, session_id: UUID, snapshot: OccupancySnapshot
-    ) -> None:
-        print(f"[DEBUG] SessionRepository.save_occupancy_snapshot: ENTRY session_id={session_id} roi_id={snapshot.roi_id}", flush=True)
-        execute_query(
-            """
-            INSERT INTO roi_occupancy_snapshot
-            (session_id, roi_id, captured_at, frame_number, count_inside, count_outside, track_ids_inside)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                str(session_id),
-                snapshot.roi_id,
-                snapshot.captured_at,
-                snapshot.frame_number,
-                snapshot.count_inside,
-                snapshot.count_outside,
-                snapshot.track_ids_inside,
-            ),
-            fetch=None,
-        )
-
-    def save_zone_event(self, session_id: UUID, event: ZoneEventRecord) -> None:
-        print(f"[DEBUG] SessionRepository.save_zone_event: ENTRY session_id={session_id} roi_id={event.roi_id} type={event.event_type.value}", flush=True)
-        execute_query(
-            """
-            INSERT INTO zone_event
-            (id, session_id, roi_id, track_id, event_type, occurred_at, frame_number, dwell_seconds, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                str(uuid.uuid4()),
-                str(session_id),
-                event.roi_id,
-                event.track_id,
-                event.event_type.value,
-                event.occurred_at,
-                event.frame_number,
-                event.dwell_seconds,
-                json.dumps(event.metadata),
-            ),
-            fetch=None,
-        )
-
-    def save_session_result(self, session: SessionResult) -> UUID:
-        print(f"[DEBUG] SessionRepository.save_session_result: ENTRY session.id={session.id}", flush=True)
-        session_id = self.create_session(session)
-        if session.tracked_entities:
-            self.save_tracked_entities(session_id, session.tracked_entities)
-        for snap in session.occupancy_snapshots:
-            self.save_occupancy_snapshot(session_id, snap)
-        for ev in session.zone_events:
-            self.save_zone_event(session_id, ev)
-        print(f"[DEBUG] SessionRepository.save_session_result: returning {session_id}", flush=True)
-        return session_id
 
     def list_all(self) -> list[dict]:
         print(f"[DEBUG] SessionRepository.list_all: ENTRY", flush=True)
@@ -176,13 +88,16 @@ class SessionRepository:
             """
             SELECT
                 ds.id,
+                ds.video_source_id,
                 vs.name AS source_name,
                 vs.source_type AS source_type,
                 ds.started_at,
                 ds.ended_at,
                 EXTRACT(EPOCH FROM (ds.ended_at - ds.started_at)) AS duration_seconds,
                 COALESCE(te.entity_count, 0) AS total_entities,
-                COALESCE(ze.event_count, 0) AS total_events
+                COALESCE(ze.event_count, 0) AS total_events,
+                ds.output_video_path,
+                ds.status
             FROM detection_session ds
             LEFT JOIN video_source vs ON ds.video_source_id = vs.id
             LEFT JOIN (
@@ -207,13 +122,18 @@ class SessionRepository:
         row = rows[0]
         result = {
             "id": str(row[0]),
-            "source_name": row[1],
-            "source_type": row[2],
-            "started_at": row[3].isoformat() if row[3] else None,
-            "ended_at": row[4].isoformat() if row[4] else None,
-            "duration_seconds": float(row[5]) if row[5] is not None else None,
-            "total_entities": int(row[6]),
-            "total_events": int(row[7]),
+            "video_source_id": str(row[1]) if row[1] else None,
+            "source_name": row[2],
+            "source_type": row[3],
+            "started_at": row[4].isoformat() if row[4] else None,
+            "ended_at": row[5].isoformat() if row[5] else None,
+            "duration_seconds": float(row[6]) if row[6] is not None else None,
+            "total_entities": int(row[7]),
+            "total_events": int(row[8]),
+            "output_video_path": row[9],
+            "status": row[10] if row[10] else 'completed',
         }
         print(f"[DEBUG] SessionRepository.get_by_id: returning {result}", flush=True)
         return result
+
+

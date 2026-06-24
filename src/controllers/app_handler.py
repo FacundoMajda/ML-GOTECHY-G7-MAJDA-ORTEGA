@@ -1,12 +1,16 @@
 # src/controllers/app_handler.py
 import json
 import mimetypes
+import os
+import re
 import shutil
 import threading
+import time
 import traceback
 import uuid
-from cgi import FieldStorage
 from datetime import datetime
+from email.parser import BytesParser
+from email.policy import default as email_default_policy
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -18,9 +22,17 @@ from src.config.settings import REPORTS_DIR, UPLOADS_DIR
 from src.models.contracts import ROIConfig, VideoSourceConfig
 from src.models.enums import SourceType
 from src.providers.youtube_utils import extract_stream_url
+from src.repositories.db import execute_query
+from src.repositories.occupancy_snapshot_repo import OccupancySnapshotRepository
+from src.repositories.roi_repo import ROIRepository
+from src.repositories.alert_rule_repo import AlertRuleRepository
+from src.repositories.class_catalog_repo import ObjectClassCatalogRepository
 from src.repositories.session_repo import SessionRepository
 from src.repositories.video_source_repo import VideoSourceRepository
+from src.repositories.zone_event_repo import ZoneEventRepository
 from src.services.analytics_service import AnalyticsService
+from src.services.metrics_service import MetricsService
+from src.services.cohere_service import ask_cohere
 from src.services.report_service import generate_report_html
 from src.utils.html_utils import render_home
 
@@ -28,8 +40,15 @@ from src.utils.html_utils import render_home
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOADS_PATH = BASE_DIR / UPLOADS_DIR
 
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+
 _repo = VideoSourceRepository()
 _session_repo = SessionRepository()
+_roi_repo = ROIRepository()
+_snapshot_repo = OccupancySnapshotRepository()
+_zone_repo = ZoneEventRepository()
+_class_catalog = ObjectClassCatalogRepository()
+_alert_rule_repo = AlertRuleRepository()
 
 # ── Job progress (thread-safe) ─────────────────────────────────────────────
 _job_progress: dict = {}
@@ -39,12 +58,25 @@ _job_lock: threading.Lock = threading.Lock()
 _frame_dim_cache: dict[str, tuple[int, int]] = {}
 _frame_dim_lock: threading.Lock = threading.Lock()
 
-# ── Tracking class name → YOLO class ID mapping ────────────────────────────
+# ── Tracking class name → YOLO class ID mapping (full COCO 80) ────────────
 _TRACKING_CLASS_TO_YOLO = {
-    "person": 0,
-    "bicycle": 1,
-    "car": 2,
-    "backpack": 24,
+    "person": 0, "bicycle": 1, "car": 2, "motorcycle": 3, "airplane": 4,
+    "bus": 5, "train": 6, "truck": 7, "boat": 8, "traffic light": 9,
+    "fire hydrant": 10, "stop sign": 11, "parking meter": 12, "bench": 13,
+    "bird": 14, "cat": 15, "dog": 16, "horse": 17, "sheep": 18,
+    "cow": 19, "elephant": 20, "bear": 21, "zebra": 22, "giraffe": 23,
+    "backpack": 24, "umbrella": 25, "handbag": 26, "tie": 27, "suitcase": 28,
+    "frisbee": 29, "skis": 30, "snowboard": 31, "sports ball": 32, "kite": 33,
+    "baseball bat": 34, "baseball glove": 35, "skateboard": 36, "surfboard": 37,
+    "tennis racket": 38, "bottle": 39, "wine glass": 40, "cup": 41, "fork": 42,
+    "knife": 43, "spoon": 44, "bowl": 45, "banana": 46, "apple": 47,
+    "sandwich": 48, "orange": 49, "broccoli": 50, "carrot": 51, "hot dog": 52,
+    "pizza": 53, "donut": 54, "cake": 55, "chair": 56, "couch": 57,
+    "potted plant": 58, "bed": 59, "dining table": 60, "toilet": 61,
+    "tv": 62, "laptop": 63, "mouse": 64, "remote": 65, "keyboard": 66,
+    "cell phone": 67, "microwave": 68, "oven": 69, "toaster": 70, "sink": 71,
+    "refrigerator": 72, "book": 73, "clock": 74, "vase": 75, "scissors": 76,
+    "teddy bear": 77, "hair drier": 78, "toothbrush": 79,
 }
 
 
@@ -62,13 +94,12 @@ def _run_analysis(
         print(f"[DEBUG] _run_analysis: after _repo.get_by_id -> config={config}", flush=True)
         if config is None:
             raise ValueError(f"Video source not found: {video_source_id}")
-        rois = _repo.get_rois_for_source(video_source_id)
-        print(f"[DEBUG] _run_analysis: after _repo.get_rois_for_source -> {len(rois)} rois", flush=True)
+        rois = _roi_repo.list_by_source(video_source_id)
+        print(f"[DEBUG] _run_analysis: after _roi_repo.list_by_source -> {len(rois)} rois", flush=True)
 
         service = AnalyticsService(config, rois, persist=True)
 
         def _progress_callback(frames_done: int, total_frames: int | None, seconds_done: float, total_seconds: float | None) -> None:
-            print(f"[DEBUG] _progress_callback: frames_done={frames_done} total_frames={total_frames} seconds_done={seconds_done} total_seconds={total_seconds}", flush=True)
             with _job_lock:
                 _job_progress["frames_done"] = frames_done
                 _job_progress["total_frames"] = total_frames
@@ -76,12 +107,12 @@ def _run_analysis(
                 _job_progress["total_seconds"] = total_seconds
                 if total_seconds and total_seconds > 0:
                     _job_progress["progress"] = min(seconds_done / total_seconds, 1.0)
-                    _job_progress["message"] = f"Processed {seconds_done:.1f}/{total_seconds:.1f} seconds"
+                    _job_progress["message"] = f"Processing frames: {seconds_done:.1f}/{total_seconds:.1f}s ({frames_done} frames)"
                 elif total_frames and total_frames > 0:
                     _job_progress["progress"] = frames_done / total_frames
-                    _job_progress["message"] = f"Processed {frames_done}/{total_frames} frames"
+                    _job_progress["message"] = f"Processing frames: {frames_done}/{total_frames}"
                 else:
-                    _job_progress["message"] = f"Processed {seconds_done:.1f} seconds"
+                    _job_progress["message"] = f"Processing frames: {seconds_done:.1f}s"
 
         print(f"[DEBUG] _run_analysis: calling service.process()...", flush=True)
         result = service.process(
@@ -94,9 +125,21 @@ def _run_analysis(
         )
         print(f"[DEBUG] _run_analysis: after service.process() -> result.id={result.id}", flush=True)
 
+        # Feedback post-procesamiento — UI ya no se queda congelada
+        with _job_lock:
+            _job_progress["message"] = "Computing derived metrics..."
+            _job_progress["timestamp"] = datetime.now().isoformat()
+
+        # Compute derived metrics (peak_occupancy, dwell, etc.)
+        print(f"[DEBUG] _run_analysis: calling MetricsService().compute(str(result.id))", flush=True)
+        try:
+            MetricsService().compute(str(result.id))
+        except Exception as e:
+            print(f"[WARN] _run_analysis: MetricsService().compute() failed: {e}", flush=True)
+
         # Save report HTML to disk
-        print(f"[DEBUG] _run_analysis: calling generate_report_html(result)", flush=True)
-        report_html = generate_report_html(result)
+        print(f"[DEBUG] _run_analysis: calling generate_report_html(str(result.id))", flush=True)
+        report_html = generate_report_html(str(result.id))
         report_path = Path(REPORTS_DIR) / f"{result.id}.html"
         print(f"[DEBUG] _run_analysis: writing report to {report_path}", flush=True)
         report_path.write_text(report_html, encoding="utf-8")
@@ -106,6 +149,7 @@ def _run_analysis(
             _job_progress["running"] = False
             _job_progress["session_id"] = result.id
             _job_progress["error"] = None
+            _job_progress["progress"] = 1.0
             _job_progress["timestamp"] = datetime.now().isoformat()
             _job_progress["message"] = "Analysis complete"
             print(f"[DEBUG] _run_analysis: _job_progress set -> {dict(_job_progress)}", flush=True)
@@ -151,6 +195,9 @@ def _get_frame_dimensions(source_id: str) -> tuple[int, int]:
             print(f"[DEBUG] _get_frame_dimensions: frame read failed, returning (0,0)", flush=True)
             return (0, 0)
         h, w = frame.shape[:2]
+        # Validar alineación 16px (estándar codificación video)
+        if w % 16 != 0 or h % 16 != 0:
+            print(f"[WARN] _get_frame_dimensions: source_id={source_id} resolution {w}x{h} not 16px aligned (w%16={w%16}, h%16={h%16})", flush=True)
         with _frame_dim_lock:
             _frame_dim_cache[source_id] = (w, h)
         print(f"[DEBUG] _get_frame_dimensions: returning ({w}, {h})", flush=True)
@@ -163,7 +210,8 @@ def _get_frame_dimensions(source_id: str) -> tuple[int, int]:
 def _load_video_sources() -> list[tuple[VideoSourceConfig, list[ROIConfig]]]:
     print(f"[DEBUG] _load_video_sources: ENTRY", flush=True)
     try:
-        result = _repo.get_all_with_rois()
+        sources = _repo.list_all()
+        result = [(src, _roi_repo.list_by_source(src.id)) for src in sources]
         print(f"[DEBUG] _load_video_sources: got {len(result)} sources, returning", flush=True)
         return result
     except Exception as exc:
@@ -195,6 +243,7 @@ def _source_to_dict(src: VideoSourceConfig, rois: list[ROIConfig]) -> dict:
                 "detect_occupancy": r.detect_occupancy,
                 "detect_dwell": r.detect_dwell,
                 "alerts": r.alerts,
+                "observed_classes": r.observed_classes,
             }
             for r in rois
         ],
@@ -203,8 +252,140 @@ def _source_to_dict(src: VideoSourceConfig, rois: list[ROIConfig]) -> dict:
     return result
 
 
+def _normalize_video_path(path: str | None) -> str | None:
+    """Return a URL path for serving the output video via /api/video/<filename>."""
+    if not path:
+        return None
+    filename = path.replace("\\", "/").split("/")[-1]
+    if not filename:
+        return None
+    project_root = (BASE_DIR / "..").resolve()
+    video_path = project_root / "outputs" / filename
+    if video_path.exists() and video_path.is_file():
+        return f"/api/video/{filename}"
+    return None
+
+
+# ── Route tables ──────────────────────────────────────────────────────────────
+
+ROUTES_GET = {
+    "/api/sources": "_api_sources",
+    re.compile(r"^/api/sources/([^/]+)/preview$"): "_api_source_preview",
+    "/api/sessions": "_api_session_list",
+    re.compile(r"^/api/sessions/([^/]+)/report$"): "_api_session_report",
+    "/api/analytics/occupancy-trends": "_api_occupancy_trends",
+    "/api/analytics/dwell-times": "_api_dwell_times",
+    "/api/job/status": "_api_job_status",
+    # New clean endpoints
+    "/api/dashboard": "_api_dashboard",
+    "/api/analyses": "_api_analyses_list",
+    re.compile(r"^/api/analyses/([^/]+)$"): "_api_analyses_detail",
+    "/api/logs/data": "_api_logs_data",
+    "/api/classes": "_api_classes",
+    "/api/classes/grouped": "_api_classes_grouped",
+    "/api/analytics/timeline": "_api_analytics_timeline",
+    re.compile(r"^/api/sessions/([^/]+)/tracks$"): "_api_session_tracks",
+    re.compile(r"^/api/rois/([^/]+)/alert-rules$"): "_api_list_alert_rules",
+    re.compile(r"^/api/rois/([^/]+)/metrics/summary$"): "_api_roi_metrics_summary",
+}
+
+ROUTES_POST = {
+    "/api/uploads": "_handle_upload_file",
+    "/api/sources": "_handle_create_source",
+    "/api/chat": "_api_chat",
+    re.compile(r"^/api/sources/([^/]+)/rois$"): "_api_create_roi",
+    re.compile(r"^/api/rois/([^/]+)/alert-rules$"): "_api_create_alert_rule",
+    re.compile(r"^/api/alert-rules/([^/]+)/toggle$"): "_api_toggle_alert_rule",
+    "/process": "_handle_process",
+}
+
+ROUTES_DELETE = {
+    re.compile(r"^/api/rois/([^/]+)$"): "_api_delete_roi",
+    re.compile(r"^/api/sources/([^/]+)$"): "_api_delete_source",
+    re.compile(r"^/api/alert-rules/([^/]+)$"): "_api_delete_alert_rule",
+}
+
+ROUTES_PUT = {
+    re.compile(r"^/api/rois/([^/]+)/config$"): "_api_update_roi_config",
+    re.compile(r"^/api/rois/([^/]+)/observed-classes$"): "_api_update_roi_observed_classes",
+    re.compile(r"^/api/alert-rules/([^/]+)$"): "_api_update_alert_rule",
+}
+
+
 class AppHandler(BaseHTTPRequestHandler):
-    # ── API ──────────────────────────────────────────────────────────────────
+    # ── Router ──────────────────────────────────────────────────────────────
+
+    def _route(self, method: str, path: str) -> None:
+        route_table = {"GET": ROUTES_GET, "POST": ROUTES_POST, "DELETE": ROUTES_DELETE, "PUT": ROUTES_PUT}
+        routes = route_table.get(method, {})
+        # Literal match first
+        handler_name = routes.get(path)
+        if handler_name:
+            getattr(self, handler_name)()
+            return
+        # Regex match
+        for pattern, handler_name in routes.items():
+            if isinstance(pattern, re.Pattern):
+                m = pattern.match(path)
+                if m:
+                    getattr(self, handler_name)(*m.groups())
+                    return
+        self.send_error(404)
+
+    # ── HTTP method handlers ───────────────────────────────────────────────
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/":
+            self._send_html(render_home())
+            return
+
+        if path.startswith("/api/video/"):
+            filename = path.removeprefix("/api/video/")
+            project_root = (BASE_DIR / "..").resolve()
+            from src.config.settings import OUTPUT_DIR
+            video_path = project_root / OUTPUT_DIR / filename
+            if not str(video_path.resolve()).startswith(str((project_root / OUTPUT_DIR).resolve())):
+                self.send_error(403)
+                return
+            if not video_path.exists() or not video_path.is_file():
+                self.send_error(404)
+                return
+            self._send_file(video_path.resolve())
+            return
+
+        if path.startswith("/files/"):
+            rel = path.removeprefix("/files/")
+            file_path = (BASE_DIR / rel).resolve()
+            if not str(file_path).startswith(str(BASE_DIR)):
+                self.send_error(403)
+                return
+            if not file_path.exists() or not file_path.is_file():
+                self.send_error(404)
+                return
+            self._send_file(file_path)
+            return
+
+        self._route("GET", path)
+
+    def do_POST(self) -> None:
+        print(f"[DEBUG] AppHandler.do_POST: path={self.path}", flush=True)
+        parsed = urlparse(self.path)
+        self._route("POST", parsed.path)
+
+    def do_DELETE(self) -> None:
+        print(f"[DEBUG] AppHandler.do_DELETE: path={self.path}", flush=True)
+        parsed = urlparse(self.path)
+        self._route("DELETE", parsed.path)
+
+    def do_PUT(self) -> None:
+        print(f"[DEBUG] AppHandler.do_PUT: path={self.path}", flush=True)
+        parsed = urlparse(self.path)
+        self._route("PUT", parsed.path)
+
+    # ── API handlers — GET ────────────────────────────────────────────────
 
     def _api_sources(self) -> None:
         """GET /api/sources"""
@@ -243,13 +424,14 @@ class AppHandler(BaseHTTPRequestHandler):
 
             # Resize para preview (max 640px de ancho)
             h, w = frame.shape[:2]
+            scale = 1.0
             if w > 640:
                 scale = 640 / w
                 new_w, new_h = int(w * scale), int(h * scale)
                 frame = cv2.resize(frame, (new_w, new_h))
 
             # ── Dibujar ROIs ──
-            rois = _repo.get_rois_for_source(source_id)
+            rois = _roi_repo.list_by_source(source_id)
             overlay = frame.copy()
             for roi in rois:
                 pts = np.array(roi.polygon, dtype=np.int32)
@@ -286,6 +468,280 @@ class AppHandler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send_json(500, {"error": str(e)})
 
+    def _api_session_list(self) -> None:
+        """GET /api/sessions"""
+        print(f"[DEBUG] AppHandler._api_session_list: ENTRY", flush=True)
+        sessions = _session_repo.list_all()
+        print(f"[DEBUG] AppHandler._api_session_list: returning {len(sessions)} sessions", flush=True)
+        self._send_json(200, sessions)
+
+    def _api_session_report(self, session_id: str) -> None:
+        """GET /api/sessions/<id>/report"""
+        print(f"[DEBUG] AppHandler._api_session_report: ENTRY session_id={session_id}", flush=True)
+        path = Path(REPORTS_DIR) / f"{session_id}.html"
+        if not path.exists():
+            print(f"[DEBUG] AppHandler._api_session_report: report not found at {path}, 404", flush=True)
+            self._send_json(404, {"error": "Report not found"})
+            return
+        print(f"[DEBUG] AppHandler._api_session_report: sending report ({path.stat().st_size} bytes)", flush=True)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.end_headers()
+        self.wfile.write(path.read_bytes())
+
+    def _api_occupancy_trends(self) -> None:
+        """GET /api/analytics/occupancy-trends"""
+        print(f"[DEBUG] AppHandler._api_occupancy_trends: ENTRY", flush=True)
+        try:
+            data = _snapshot_repo.get_occupancy_trends()
+            self._send_json(200, data)
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._api_occupancy_trends: EXCEPTION {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_dwell_times(self) -> None:
+        """GET /api/analytics/dwell-times"""
+        print(f"[DEBUG] AppHandler._api_dwell_times: ENTRY", flush=True)
+        try:
+            data = _zone_repo.get_dwell_times()
+            self._send_json(200, data)
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._api_dwell_times: EXCEPTION {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_job_status(self) -> None:
+        """GET /api/job/status"""
+        print(f"[DEBUG] AppHandler._api_job_status: ENTRY", flush=True)
+        with _job_lock:
+            status = dict(_job_progress)
+
+        if not status:
+            status = {
+                "running": False,
+                "progress": 0.0,
+                "frames_done": 0,
+                "total_frames": None,
+                "seconds_done": 0.0,
+                "total_seconds": None,
+                "error": None,
+                "timestamp": datetime.now().isoformat(),
+                "message": "No job running",
+            }
+
+        # Ensure all expected keys are present
+        status.setdefault("running", False)
+        status.setdefault("progress", 0.0)
+        status.setdefault("frames_done", 0)
+        status.setdefault("total_frames", None)
+        status.setdefault("seconds_done", 0.0)
+        status.setdefault("total_seconds", None)
+        status.setdefault("error", None)
+        status.setdefault("timestamp", datetime.now().isoformat())
+        status.setdefault("message", "")
+
+        print(f"[DEBUG] AppHandler._api_job_status: full status dict -> {status}", flush=True)
+        self._send_json(200, status)
+
+
+    # -- New clean API - Dashboard / Analyses ---
+
+    def _api_dashboard(self) -> None:
+        print('[DEBUG] AppHandler._api_dashboard: ENTRY', flush=True)
+        try:
+            data = MetricsService().get_dashboard()
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_analytics_timeline(self) -> None:
+        """GET /api/analytics/timeline?hours=24 — eventos por hora y clase."""
+        try:
+            hours = int(parse_qs(urlparse(self.path).query).get('hours', ['24'])[0])
+            hours = max(1, min(hours, 168))
+            data = MetricsService().get_timeline(hours)
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_session_tracks(self, session_id: str) -> None:
+        """GET /api/sessions/<id>/tracks — top 50 tracks con dwell."""
+        try:
+            data = MetricsService().get_session_tracks(session_id)
+            self._send_json(200, {"session_id": session_id, "tracks": data})
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_analyses_list(self) -> None:
+        print('[DEBUG] AppHandler._api_analyses_list: ENTRY', flush=True)
+        try:
+            sessions = _session_repo.list_all()
+            cleaned = [
+                {
+                    'id': s['id'],
+                    'source_name': s.get('source_name'),
+                    'source_type': s.get('source_type'),
+                    'started_at': s.get('started_at'),
+                    'ended_at': s.get('ended_at'),
+                    'duration_seconds': s.get('duration_seconds'),
+                    'status': s.get('status', 'completed'),
+                }
+                for s in sessions
+            ]
+            self._send_json(200, cleaned)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    def _api_analyses_detail(self, session_id: str) -> None:
+        print('[DEBUG] AppHandler._api_analyses_detail: ENTRY session_id=' + session_id, flush=True)
+        try:
+            session = _session_repo.get_by_id(session_id)
+            if not session:
+                self._send_json(404, {'error': 'Analysis not found'})
+                return
+            from src.repositories.metric_snapshot_repo import MetricSnapshotRepository
+            snaps = MetricSnapshotRepository().get_by_session(uuid.UUID(session_id))
+            cleaned_snaps = [
+                {
+                    'roi_id': str(s['roi_id']),
+                    'object_class': s.get('object_class') or 'person',
+                    'entries': s['entries'],
+                    'exits': s['exits'],
+                    'max_occupancy': s['max_occupancy'],
+                    'avg_dwell_seconds': s['avg_dwell_seconds'],
+                    'computed_at': str(s['computed_at']) if s.get('computed_at') else None,
+                }
+                for s in snaps
+            ]
+            # Totals
+            total_entries = sum(s['entries'] for s in cleaned_snaps)
+            total_exits = sum(s['exits'] for s in cleaned_snaps)
+            total_max_occ = sum(s['max_occupancy'] for s in cleaned_snaps)
+
+            # Individual zone events with ROI name for this session
+            events = execute_query(
+                """
+                SELECT ze.id::text, ze.event_type, ze.occurred_at,
+                       ze.track_id, ze.frame_number, ze.dwell_seconds,
+                       r.name AS roi_name, ze.object_class,
+                       ze.metadata, ze.rule_id::text
+                FROM zone_event ze
+                JOIN roi r ON r.id = ze.roi_id
+                WHERE ze.session_id = %s
+                ORDER BY ze.occurred_at
+                """,
+                (session_id,),
+                fetch="all",
+            )
+            zone_events = [
+                {
+                    "id": row[0],
+                    "event_type": row[1],
+                    "occurred_at": row[2].isoformat() if row[2] else None,
+                    "track_id": row[3],
+                    "frame_number": row[4],
+                    "dwell_seconds": float(row[5]) if row[5] is not None else None,
+                    "roi_name": row[6],
+                    "object_class": row[7] or 'person',
+                    "_metadata": row[8] if row[8] else {},
+                    "rule_id": row[9],
+                }
+                for row in events
+            ]
+            for ev in zone_events:
+                meta = ev.pop("_metadata")
+                ev["severity"] = meta.get("severity")
+                ev["rule_name"] = meta.get("rule_name")
+                ev["value"] = meta.get("value")
+
+# ── Alert rules evaluated during this session ──
+            triggered_rule_ids = {ev["rule_id"] for ev in zone_events if ev.get("rule_id")}
+            session_roi_ids = {str(s['roi_id']) for s in cleaned_snaps}
+            if not session_roi_ids:
+                session_roi_ids = {ev["roi_id"] for ev in zone_events if ev.get("rule_id")}
+            if not session_roi_ids and session.get('video_source_id'):
+                roi_fallback = execute_query(
+                    "SELECT id::text FROM roi WHERE video_source_id = %s",
+                    (session['video_source_id'],),
+                    fetch="all",
+                )
+                session_roi_ids = {r[0] for r in roi_fallback}
+            alert_rules_by_roi: dict[str, list] = {}
+            if session_roi_ids:
+                import json as _json
+                placeholders = ",".join(["%s"] * len(session_roi_ids))
+                rules_rows = execute_query(
+                    f"""
+                    SELECT id::text, roi_id::text, name, class_id, metric, operator,
+                           threshold, threshold2, event_type, severity, active, time_from, time_to
+                    FROM alert_rule
+                    WHERE roi_id IN ({placeholders}) AND active = TRUE
+                    ORDER BY created_at
+                    """,
+                    tuple(session_roi_ids),
+                    fetch="all",
+                )
+                for r in rules_rows:
+                    rid = str(r[0]); roi_id = str(r[1])
+                    rule = {
+                        "id": rid,
+                        "name": r[2],
+                        "class_id": r[3],
+                        "metric": r[4],
+                        "operator": r[5],
+                        "threshold": float(r[6]) if r[6] is not None else None,
+                        "threshold2": float(r[7]) if r[7] is not None else None,
+                        "event_type": r[8],
+                        "severity": r[9],
+                        "active": r[10],
+                        "time_from": str(r[11]) if r[11] is not None else None,
+                        "time_to": str(r[12]) if r[12] is not None else None,
+                        "triggered": rid in triggered_rule_ids,
+                    }
+                    alert_rules_by_roi.setdefault(roi_id, []).append(rule)
+
+            # ── Per-class totals from zone_events (accurate even if metric_snapshot has stale data) ──
+            class_summary: dict[str, dict] = {}
+            for ev in zone_events:
+                cls = ev["object_class"]
+                if cls not in class_summary:
+                    class_summary[cls] = {"entries": 0, "exits": 0}
+                if ev["event_type"] == "entry":
+                    class_summary[cls]["entries"] += 1
+                elif ev["event_type"] == "exit":
+                    class_summary[cls]["exits"] += 1
+
+            self._send_json(200, {
+                'id': session['id'],
+                'source_name': session.get('source_name'),
+                'source_type': session.get('source_type'),
+                'started_at': session.get('started_at'),
+                'ended_at': session.get('ended_at'),
+                'duration_seconds': session.get('duration_seconds'),
+                'status': session.get('status', 'completed'),
+                'output_video_path': _normalize_video_path(session.get('output_video_path')),
+                'total_entities': session.get('total_entities', 0),
+                'total_events': session.get('total_events', 0),
+                'total_entries': total_entries,
+                'total_exits': total_exits,
+                'total_max_occupancy': total_max_occ,
+                'class_summary': class_summary,
+                'metrics': cleaned_snaps,
+                'zone_events': zone_events,
+                'alert_rules_by_roi': alert_rules_by_roi,
+            })
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    # ── API handlers — POST ───────────────────────────────────────────────
+
     def _handle_upload_file(self) -> None:
         """POST /api/uploads - multipart/form-data with field 'file'."""
         print(f"[DEBUG] AppHandler._handle_upload_file: ENTRY", flush=True)
@@ -295,45 +751,91 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "multipart/form-data is required"})
             return
 
-        form = FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": ctype,
-            },
-        )
+        try:
+            raw_length = self.headers.get("Content-Length", "0")
+            content_length = int(raw_length)
+        except (ValueError, TypeError):
+            content_length = 0
 
-        file_item = form["file"] if "file" in form else None
-        if file_item is None or not getattr(file_item, "file", None):
-            print(f"[DEBUG] AppHandler._handle_upload_file: no file field, 400", flush=True)
-            self._send_json(400, {"error": "file field is required"})
+        if content_length <= 0:
+            print(f"[DEBUG] AppHandler._handle_upload_file: missing Content-Length, 400", flush=True)
+            self._send_json(400, {"error": "Content-Length header is required"})
             return
 
-        original_name = Path(file_item.filename or "upload.mp4").name
-        if not original_name:
-            original_name = "upload.mp4"
+        if content_length > MAX_UPLOAD_BYTES:
+            print(f"[DEBUG] AppHandler._handle_upload_file: file too large ({content_length} bytes), 413", flush=True)
+            self._send_json(413, {"error": f"File exceeds maximum size of {MAX_UPLOAD_BYTES // (1024 * 1024)}MB"})
+            return
 
-        ext = Path(original_name).suffix or ".mp4"
-        safe_stem = Path(original_name).stem.strip().replace(" ", "_") or "upload"
-        filename = f"{safe_stem}_{uuid.uuid4().hex[:8]}{ext}"
+        try:
+            body = self.rfile.read(content_length)
+            if len(body) < content_length:
+                print(f"[DEBUG] AppHandler._handle_upload_file: body truncated ({len(body)} < {content_length}), 400", flush=True)
+                self._send_json(400, {"error": "Request body truncated"})
+                return
 
-        UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
-        target = UPLOADS_PATH / filename
+            # Parse multipart with email.parser — avoids deprecated cgi.FieldStorage
+            # which crashes without CONTENT_LENGTH in environ.
+            raw_msg = b"Content-Type: " + ctype.encode("ascii") + b"\r\n\r\n" + body
+            msg = BytesParser(policy=email_default_policy).parsebytes(raw_msg)
 
-        with target.open("wb") as fh:
-            shutil.copyfileobj(file_item.file, fh)
+            file_bytes = None
+            original_name = None
+            for part in msg.walk():
+                if part.get_content_maintype() == "multipart":
+                    continue
+                # Only accept the part named "file"
+                disp_name = part.get_param("name", header="Content-Disposition")
+                if disp_name == "file":
+                    payload = part.get_payload(decode=True)
+                    if isinstance(payload, bytes) and len(payload) > 0:
+                        file_bytes = payload
+                        original_name = part.get_filename()
+                        break
 
-        print(f"[DEBUG] AppHandler._handle_upload_file: saved file -> {filename}", flush=True)
-        self._send_json(
-            201,
-            {
-                "filename": filename,
-                "original_name": original_name,
-                "path": str(target),
-                "relative_path": str(target.relative_to(BASE_DIR)).replace("\\", "/"),
-            },
-        )
+            if file_bytes is None:
+                print(f"[DEBUG] AppHandler._handle_upload_file: no file field in multipart, 400", flush=True)
+                self._send_json(400, {"error": "file field is required"})
+                return
+
+            original_name = Path(original_name or "upload.mp4").name
+            if not original_name:
+                original_name = "upload.mp4"
+
+            ext = Path(original_name).suffix or ".mp4"
+            safe_stem = Path(original_name).stem.strip().replace(" ", "_") or "upload"
+            filename = f"{safe_stem}_{uuid.uuid4().hex[:8]}{ext}"
+
+            UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
+            target = UPLOADS_PATH / filename
+            target.write_bytes(file_bytes)
+
+            print(f"[DEBUG] AppHandler._handle_upload_file: saved file -> {filename} ({len(file_bytes)} bytes)", flush=True)
+            try:
+                relative_path = str(target.relative_to(BASE_DIR)).replace("\\", "/")
+            except ValueError:
+                relative_path = str(target.resolve()).replace("\\", "/")
+            self._send_json(
+                201,
+                {
+                    "filename": filename,
+                    "original_name": original_name,
+                    "path": str(target),
+                    "relative_path": relative_path,
+                },
+            )
+        except PermissionError as e:
+            print(f"[DEBUG] AppHandler._handle_upload_file: PermissionError -> {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": f"Cannot write upload directory: {e}"})
+        except OSError as e:
+            print(f"[DEBUG] AppHandler._handle_upload_file: OSError -> {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": f"File system error: {e}"})
+        except Exception as e:
+            print(f"[DEBUG] AppHandler._handle_upload_file: EXCEPTION -> {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            self._send_json(500, {"error": f"Upload failed: {e}"})
 
     def _handle_create_source(self) -> None:
         """POST /api/sources"""
@@ -389,126 +891,20 @@ class AppHandler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send_json(400, {"error": str(e)})
 
-    def _send_json(self, status: int, data) -> None:
-        print(f"[DEBUG] AppHandler._send_json: status={status} data_preview={str(data)[:200]}", flush=True)
-        body = json.dumps(data).encode("utf-8")
+    def _api_chat(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length)
+        body = json.loads(raw) if raw else {}
+        question = body.get("question", "")
+        report_data = body.get("report_data", {})
+        if not question or not report_data:
+            self._send_json(400, {"error": "question and report_data are required"})
+            return
         try:
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            print(f"[DEBUG] AppHandler._send_json: sent {len(body)} bytes", flush=True)
-        except (ConnectionAbortedError, BrokenPipeError) as e:
-            print(f"[DEBUG] AppHandler._send_json: client disconnected: {e}", flush=True)
-            pass  # cliente desconectado, no podemos hacer nada
-
-    # ── HTTP ────────────────────────────────────────────────────────────────
-
-    def do_GET(self) -> None:
-        print(f"[DEBUG] AppHandler.do_GET: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        # API — sources
-        if path == "/api/sources":
-            self._api_sources()
-            return
-
-        if path.startswith("/api/sources/"):
-            parts = path.removeprefix("/api/sources/").split("/", 1)
-            source_id = parts[0]
-            if len(parts) == 2 and parts[1] == "preview":
-                self._api_source_preview(source_id)
-                return
-            self.send_error(404)
-            return
-
-        # API — sessions
-        if path == "/api/sessions":
-            self._api_session_list()
-            return
-
-        if path.startswith("/api/sessions/"):
-            parts = path.removeprefix("/api/sessions/").split("/", 1)
-            session_id = parts[0]
-            if len(parts) == 2 and parts[1] == "report":
-                self._api_session_report(session_id)
-                return
-            self.send_error(404)
-            return
-
-        # API — job status
-        if path == "/api/job/status":
-            self._api_job_status()
-            return
-
-        # Pages
-        if path == "/":
-            self._send_html(render_home())
-            return
-
-        if path.startswith("/files/"):
-            rel = path.removeprefix("/files/")
-            file_path = (BASE_DIR / rel).resolve()
-            if not str(file_path).startswith(str(BASE_DIR)):
-                self.send_error(403)
-                return
-            if not file_path.exists() or not file_path.is_file():
-                self.send_error(404)
-                return
-            self._send_file(file_path)
-            return
-
-        self.send_error(404)
-
-    def do_DELETE(self) -> None:
-        print(f"[DEBUG] AppHandler.do_DELETE: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        if path.startswith("/api/rois/"):
-            roi_id = path.removeprefix("/api/rois/")
-            self._api_delete_roi(roi_id)
-            return
-
-        if path.startswith("/api/sources/"):
-            source_id = path.removeprefix("/api/sources/")
-            self._api_delete_source(source_id)
-            return
-
-        self.send_error(404)
-
-    def do_PUT(self) -> None:
-        print(f"[DEBUG] AppHandler.do_PUT: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        if path.startswith("/api/rois/") and path.endswith("/config"):
-            roi_id = path.removeprefix("/api/rois/").removesuffix("/config")
-            self._api_update_roi_config(roi_id)
-            return
-
-        self.send_error(404)
-
-    def do_POST(self) -> None:
-        print(f"[DEBUG] AppHandler.do_POST: path={self.path}", flush=True)
-        parsed = urlparse(self.path)
-        path = parsed.path
-        if path == "/api/uploads":
-            self._handle_upload_file()
-        elif path == "/api/sources":
-            self._handle_create_source()
-        elif path == "/process":
-            self._handle_process()
-        elif path.startswith("/api/sources/"):
-            parts = path.removeprefix("/api/sources/").split("/", 1)
-            if len(parts) == 2 and parts[1] == "rois":
-                self._api_create_roi(parts[0])
-                return
-            self.send_error(404)
-        else:
-            self.send_error(404)
+            answer = ask_cohere(report_data, question)
+            self._send_json(200, {"answer": answer})
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
 
     def _handle_process(self) -> None:
         print(f"[DEBUG] AppHandler._handle_process: ENTRY", flush=True)
@@ -597,30 +993,6 @@ class AppHandler(BaseHTTPRequestHandler):
 
         self._send_json(200, {"status": "started"})
 
-    def _api_session_list(self) -> None:
-        """GET /api/sessions"""
-        print(f"[DEBUG] AppHandler._api_session_list: ENTRY", flush=True)
-        sessions = _session_repo.list_all()
-        print(f"[DEBUG] AppHandler._api_session_list: returning {len(sessions)} sessions", flush=True)
-        self._send_json(200, sessions)
-
-    def _api_session_report(self, session_id: str) -> None:
-        """GET /api/sessions/<id>/report"""
-        print(f"[DEBUG] AppHandler._api_session_report: ENTRY session_id={session_id}", flush=True)
-        path = Path(REPORTS_DIR) / f"{session_id}.html"
-        if not path.exists():
-            print(f"[DEBUG] AppHandler._api_session_report: report not found at {path}, 404", flush=True)
-            self._send_json(404, {"error": "Report not found"})
-            return
-        print(f"[DEBUG] AppHandler._api_session_report: sending report ({path.stat().st_size} bytes)", flush=True)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(path.stat().st_size))
-        self.end_headers()
-        self.wfile.write(path.read_bytes())
-
-    # ── New API endpoints ────────────────────────────────────────────────────
-
     def _api_create_roi(self, source_id: str) -> None:
         """POST /api/sources/<id>/rois"""
         print(f"[DEBUG] AppHandler._api_create_roi: ENTRY source_id={source_id}", flush=True)
@@ -654,8 +1026,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
 
         roi_id = str(uuid.uuid4())
-        roi = ROIConfig(id=roi_id, name=name, polygon=polygon)
-        _repo.create_roi(roi, source_id)
+        observed_classes = body.get("observed_classes") or ["person"]
+        if not isinstance(observed_classes, list) or not all(isinstance(c, str) for c in observed_classes):
+            self._send_json(400, {"error": "observed_classes must be a list of strings"})
+            return
+        if not observed_classes:
+            observed_classes = ["person"]
+        roi = ROIConfig(
+            id=roi_id, name=name, polygon=polygon,
+            observed_classes=observed_classes,
+        )
+        _roi_repo.create(roi, source_id)
 
         print(f"[DEBUG] AppHandler._api_create_roi: created roi {roi_id}", flush=True)
         self._send_json(201, {
@@ -669,18 +1050,21 @@ class AppHandler(BaseHTTPRequestHandler):
             "detect_occupancy": roi.detect_occupancy,
             "detect_dwell": roi.detect_dwell,
             "alerts": roi.alerts,
+            "observed_classes": roi.observed_classes,
         })
+
+    # ── API handlers — DELETE ─────────────────────────────────────────────
 
     def _api_delete_roi(self, roi_id: str) -> None:
         """DELETE /api/rois/<id>"""
         print(f"[DEBUG] AppHandler._api_delete_roi: ENTRY roi_id={roi_id}", flush=True)
-        existing = _repo.get_roi_by_id(roi_id)
+        existing = _roi_repo.get_by_id(roi_id)
         if existing is None:
             print(f"[DEBUG] AppHandler._api_delete_roi: roi not found, 404", flush=True)
             self._send_json(404, {"error": "ROI not found"})
             return
 
-        _repo.delete_roi(roi_id)
+        _roi_repo.delete(roi_id)
         print(f"[DEBUG] AppHandler._api_delete_roi: deleted roi {roi_id}, 204", flush=True)
         self.send_response(204)
         self.send_header("Content-Length", "0")
@@ -701,10 +1085,12 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # ── API handlers — PUT ────────────────────────────────────────────────
+
     def _api_update_roi_config(self, roi_id: str) -> None:
         """PUT /api/rois/<id>/config"""
         print(f"[DEBUG] AppHandler._api_update_roi_config: ENTRY roi_id={roi_id}", flush=True)
-        existing = _repo.get_roi_by_id(roi_id)
+        existing = _roi_repo.get_by_id(roi_id)
         if existing is None:
             print(f"[DEBUG] AppHandler._api_update_roi_config: roi not found, 404", flush=True)
             self._send_json(404, {"error": "ROI not found"})
@@ -714,45 +1100,300 @@ class AppHandler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length)) if length else {}
         print(f"[DEBUG] AppHandler._api_update_roi_config: body={body}", flush=True)
 
-        _repo.update_roi_config(roi_id, body)
+        _roi_repo.update_config(roi_id, body)
 
         # Return updated fields
-        updated = _repo.get_roi_by_id(roi_id)
+        updated = _roi_repo.get_by_id(roi_id)
         print(f"[DEBUG] AppHandler._api_update_roi_config: returning updated={updated}", flush=True)
         self._send_json(200, updated)
 
-    def _api_job_status(self) -> None:
-        """GET /api/job/status"""
-        print(f"[DEBUG] AppHandler._api_job_status: ENTRY", flush=True)
-        with _job_lock:
-            status = dict(_job_progress)
+    def _api_update_roi_observed_classes(self, roi_id: str) -> None:
+        """PUT /api/rois/<id>/observed-classes — replace the observed-classes list."""
+        print(f"[DEBUG] AppHandler._api_update_roi_observed_classes: ENTRY roi_id={roi_id}", flush=True)
+        existing = _roi_repo.get_by_id(roi_id)
+        if existing is None:
+            self._send_json(404, {"error": "ROI not found"})
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length)) if length else {}
+        classes = body.get("classes")
+        if not isinstance(classes, list) or not all(isinstance(c, str) for c in classes):
+            self._send_json(400, {"error": "classes must be a list of strings"})
+            return
+        if not classes:
+            classes = ["person"]
+        _roi_repo.update_observed_classes(roi_id, classes)
+        self._send_json(200, {"id": roi_id, "observed_classes": classes})
 
-        if not status:
-            status = {
-                "running": False,
-                "progress": 0.0,
-                "frames_done": 0,
-                "total_frames": None,
-                "seconds_done": 0.0,
-                "total_seconds": None,
-                "error": None,
-                "timestamp": datetime.now().isoformat(),
-                "message": "No job running",
-            }
+    def _api_roi_metrics_summary(self, roi_id: str) -> None:
+        """GET /api/rois/<id>/metrics/summary — mini-stats del ultimo session."""
+        try:
+            existing = _roi_repo.get_by_id(roi_id)
+            if existing is None:
+                self._send_json(404, {"error": "ROI not found"})
+                return
+            data = MetricsService().get_roi_summary(roi_id)
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
 
-        # Ensure all expected keys are present
-        status.setdefault("running", False)
-        status.setdefault("progress", 0.0)
-        status.setdefault("frames_done", 0)
-        status.setdefault("total_frames", None)
-        status.setdefault("seconds_done", 0.0)
-        status.setdefault("total_seconds", None)
-        status.setdefault("error", None)
-        status.setdefault("timestamp", datetime.now().isoformat())
-        status.setdefault("message", "")
+    # ── Logs / Problems + Resources ───────────────────────────────────────
 
-        print(f"[DEBUG] AppHandler._api_job_status: full status dict -> {status}", flush=True)
-        self._send_json(200, status)
+    def _api_classes(self) -> None:
+        """GET /api/classes — full catalog (80 COCO classes, 12 categories)."""
+        try:
+            data = _class_catalog.list_all()
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_classes_grouped(self) -> None:
+        """GET /api/classes/grouped — {category: [{id, name}, ...]} for UI."""
+        try:
+            data = _class_catalog.list_grouped_by_category()
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    # ── Alert Rules CRUD ─────────────────────────────────────────────
+
+    def _api_list_alert_rules(self, roi_id: str) -> None:
+        """GET /api/rois/<id>/alert-rules"""
+        try:
+            data = _alert_rule_repo.list_by_roi(roi_id)
+            self._send_json(200, data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_create_alert_rule(self, roi_id: str) -> None:
+        """POST /api/rois/<id>/alert-rules"""
+        if _roi_repo.get_by_id(roi_id) is None:
+            self._send_json(404, {"error": "ROI not found"})
+            return
+        try:
+            body = self._read_json_body()
+            if body is None:
+                return  # 400 already sent
+            name = (body.get("name") or "").strip()
+            if not name:
+                self._send_json(400, {"error": "name is required"})
+                return
+            metric = body.get("metric")
+            operator = body.get("operator")
+            event_type = body.get("event_type")
+            if not metric or not operator or not event_type:
+                self._send_json(400, {"error": "metric, operator, event_type are required"})
+                return
+            rule_id = _alert_rule_repo.create(
+                roi_id=roi_id,
+                name=name,
+                metric=metric,
+                operator=operator,
+                event_type=event_type,
+                threshold=body.get("threshold"),
+                threshold2=body.get("threshold2"),
+                class_id=body.get("class_id"),
+                time_from=body.get("time_from"),
+                time_to=body.get("time_to"),
+                severity=body.get("severity", "warning"),
+                active=body.get("active", True),
+            )
+            created = _alert_rule_repo.get_by_id(str(rule_id))
+            self._send_json(201, created)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_update_alert_rule(self, rule_id: str) -> None:
+        """PUT /api/alert-rules/<id>"""
+        try:
+            body = self._read_json_body()
+            if body is None:
+                return
+            _alert_rule_repo.update(rule_id, **body)
+            updated = _alert_rule_repo.get_by_id(rule_id)
+            if updated is None:
+                self._send_json(404, {"error": "Rule not found"})
+                return
+            self._send_json(200, updated)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_delete_alert_rule(self, rule_id: str) -> None:
+        """DELETE /api/alert-rules/<id>"""
+        try:
+            _alert_rule_repo.delete(rule_id)
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_toggle_alert_rule(self, rule_id: str) -> None:
+        """POST /api/alert-rules/<id>/toggle — body: {active: bool}, optional (toggles if omitted)."""
+        try:
+            body = self._read_json_body()
+            if body is None:
+                body = {}
+            # If body is empty, toggle: fetch current state and invert it
+            if not body:
+                current = _alert_rule_repo.get_by_id(rule_id)
+                if current is None:
+                    self._send_json(404, {"error": "Rule not found"})
+                    return
+                active = not current["active"]
+            else:
+                active = bool(body.get("active", True))
+            _alert_rule_repo.toggle_active(rule_id, active)
+            self._send_json(200, {"id": rule_id, "active": active})
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"error": str(e)})
+
+    def _api_logs_data(self) -> None:
+        """GET /api/logs/data — system resources + problem events from DB."""
+        print('[DEBUG] AppHandler._api_logs_data: ENTRY', flush=True)
+        try:
+            import psutil
+            proc = psutil.Process()
+
+            # ── Failed sessions ──
+            failed_sessions = execute_query(
+                """SELECT s.id, s.started_at, s.status, vs.name AS source_name
+                   FROM detection_session s
+                   JOIN video_source vs ON vs.id = s.video_source_id
+                   WHERE s.status IS NOT NULL AND s.status != 'completed'
+                   ORDER BY s.started_at DESC LIMIT 20""",
+                fetch="all",
+            )
+            problems = []
+            for row in failed_sessions:
+                problems.append({
+                    "type": "session_failed",
+                    "session_id": str(row[0]),
+                    "source_name": row[3],
+                    "occurred_at": row[1].isoformat() if row[1] else None,
+                    "status": row[2],
+                    "detail": f"Analisis de '{row[3]}' finalizo con estado: {row[2]}",
+                })
+
+            # ── Overcapacity events ──
+            overcap = execute_query(
+                """SELECT ze.id::text, ze.occurred_at, ze.track_id,
+                          r.name AS roi_name, vs.name AS source_name
+                   FROM zone_event ze
+                   JOIN roi r ON r.id = ze.roi_id
+                   JOIN detection_session s ON s.id = ze.session_id
+                   JOIN video_source vs ON vs.id = s.video_source_id
+                   WHERE ze.event_type = 'overcapacity'
+                   ORDER BY ze.occurred_at DESC LIMIT 20""",
+                fetch="all",
+            )
+            for row in overcap:
+                problems.append({
+                    "type": "overcapacity",
+                    "zone_event_id": row[0],
+                    "roi_name": row[3],
+                    "source_name": row[4],
+                    "occurred_at": row[1].isoformat() if row[1] else None,
+                    "track_id": row[2],
+                    "detail": f"Sobrecapacidad en {row[3]} ({row[4]}) — track {row[2]}",
+                })
+
+            # ── Dwell exceeded events ──
+            dwell_exceeded = execute_query(
+                """SELECT ze.id::text, ze.occurred_at, ze.track_id, ze.dwell_seconds,
+                          r.name AS roi_name, vs.name AS source_name
+                   FROM zone_event ze
+                   JOIN roi r ON r.id = ze.roi_id
+                   JOIN detection_session s ON s.id = ze.session_id
+                   JOIN video_source vs ON vs.id = s.video_source_id
+                   WHERE ze.event_type = 'dwell_exceeded'
+                   ORDER BY ze.occurred_at DESC LIMIT 20""",
+                fetch="all",
+            )
+            for row in dwell_exceeded:
+                problems.append({
+                    "type": "dwell_exceeded",
+                    "zone_event_id": row[0],
+                    "roi_name": row[4],
+                    "source_name": row[5],
+                    "occurred_at": row[1].isoformat() if row[1] else None,
+                    "track_id": row[2],
+                    "dwell_seconds": float(row[3]) if row[3] is not None else None,
+                    "detail": f"Tiempo excedido en {row[4]} ({row[5]}) — track {row[2]} estuvo {float(row[3]):.0f}s"
+                              if row[3] is not None else
+                              f"Tiempo excedido en {row[4]} ({row[5]}) — track {row[2]}",
+                })
+
+            problems.sort(key=lambda p: p.get("occurred_at") or "", reverse=True)
+            problems = problems[:50]
+
+            # ── Project disk size (exclude venv, pycache, git, node_modules) ──
+            project_path = Path(__file__).resolve().parent.parent
+            project_size_bytes = 0
+            for fpath in project_path.rglob('*'):
+                if any(part.startswith('.') or part in ('.venv', '__pycache__', 'node_modules') for part in fpath.parts):
+                    continue
+                if fpath.is_file():
+                    try:
+                        project_size_bytes += fpath.stat().st_size
+                    except OSError:
+                        pass
+            mem_info = proc.memory_info()
+
+            self._send_json(200, {
+                "resources": {
+                    "cpu_percent": proc.cpu_percent(interval=0.3),
+                    "cpu_count": psutil.cpu_count(),
+                    "memory_mb": round(mem_info.rss / 1048576, 1),
+                    "memory_percent": round(proc.memory_percent(), 1),
+                    "disk_mb": round(project_size_bytes / 1048576, 1),
+                    "uptime_seconds": int(time.time() - proc.create_time()),
+                    "threads": proc.num_threads(),
+                    "open_files": proc.num_fds() if hasattr(proc, 'num_fds') else (proc.num_handles() if hasattr(proc, 'num_handles') else 0),
+                    "connections": len(proc.net_connections()),
+                    "python_version": os.sys.version.split()[0],
+                },
+                "problems": problems,
+            })
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {'error': str(e)})
+
+    # ── Helpers ────────────────────────────────────────────────────────────
+
+    def _read_json_body(self) -> dict | None:
+        """Read JSON body, return dict or None and send 400 on JSON error."""
+        length = int(self.headers.get("Content-Length", 0))
+        if not length:
+            return {}
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw) if raw else {}
+        except json.JSONDecodeError as e:
+            self._send_json(400, {"error": f"Invalid JSON payload: {e}"})
+            return None
+
+    def _send_json(self, status: int, data) -> None:
+        print(f"[DEBUG] AppHandler._send_json: status={status} data_preview={str(data)[:200]}", flush=True)
+        body = json.dumps(data).encode("utf-8")
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            print(f"[DEBUG] AppHandler._send_json: sent {len(body)} bytes", flush=True)
+        except (ConnectionAbortedError, BrokenPipeError) as e:
+            print(f"[DEBUG] AppHandler._send_json: client disconnected: {e}", flush=True)
+            pass  # cliente desconectado, no podemos hacer nada
 
     def log_message(self, format: str, *args) -> None:
         return
@@ -795,7 +1436,10 @@ class AppHandler(BaseHTTPRequestHandler):
 
                 with file_path.open("rb") as fh:
                     fh.seek(start)
-                    self.wfile.write(fh.read(length))
+                    try:
+                        self.wfile.write(fh.read(length))
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
                 return
             except Exception as exc:
                 print(f"[DEBUG] AppHandler._send_file: invalid range header -> {exc}", flush=True)
@@ -806,4 +1450,8 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(file_size))
         self.end_headers()
         with file_path.open("rb") as fh:
-            shutil.copyfileobj(fh, self.wfile)
+            try:
+                shutil.copyfileobj(fh, self.wfile)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
